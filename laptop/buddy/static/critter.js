@@ -123,5 +123,18 @@
     });
   }
 
-  window.Critter = { W: W, H: H, MOODS: MOODS, draw: draw, drawIcon: drawIcon };
+  // Recolour the critter from one base colour: a darker shade and a lighter highlight.
+  function setColor(hex, lightEyes) {
+    const n = parseInt(hex.slice(1), 16);
+    const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    function css(f) { return "rgb(" + rgb.map(f).join(",") + ")"; }
+    C.body = hex;
+    C.shade = css(function (v) { return Math.round(v * 0.8); });
+    C.light = css(function (v) { return Math.round(v + (255 - v) * 0.3); });
+    // Only the black body gets light eyes; every other colour keeps the dark ones.
+    C.ink = lightEyes ? "#f5f3ec" : "#2a1712";
+    C.shine = lightEyes ? "#2a1712" : "#ffffff";
+  }
+
+  window.Critter = { W: W, H: H, MOODS: MOODS, draw: draw, drawIcon: drawIcon, setColor: setColor };
 })();

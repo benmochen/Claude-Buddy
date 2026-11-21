@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/critter.js" defer></script>
   <script src="/static/scene.js" defer></script>
+  <script src="/static/stats.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body data-mood="IDLE">
@@ -34,18 +35,51 @@
       </p>
     </section>
 
-    <button class="stone-btn settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">
-      <svg class="gear" viewBox="0 0 11 11" aria-hidden="true" shape-rendering="crispEdges">
-        <path d="M4 0h3v1h-3zM1 1h2v1h-2zM4 1h3v1h-3zM8 1h2v1h-2zM1 2h9v1h-9zM2 3h7v1h-7zM0 4h4v1h-4zM7 4h4v1h-4zM0 5h4v1h-4zM7 5h4v1h-4zM0 6h4v1h-4zM7 6h4v1h-4zM2 7h7v1h-7zM1 8h9v1h-9zM1 9h2v1h-2zM4 9h3v1h-3zM8 9h2v1h-2zM4 10h3v1h-3z" fill="currentColor"/>
-      </svg>
-      Settings
-    </button>
+    <div class="top-actions">
+      <button class="stone-btn" id="stats-toggle" aria-expanded="false" aria-controls="stats-panel">
+        <svg class="icon" viewBox="0 0 11 11" aria-hidden="true" shape-rendering="crispEdges">
+          <path d="M1 6h2v4h-2zM4.5 2h2v8h-2zM8 4h2v6h-2zM0 10h11v1h-11z" fill="currentColor"/>
+        </svg>
+        Stats
+      </button>
+      <button class="stone-btn" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">
+        <svg class="icon" viewBox="0 0 11 11" aria-hidden="true" shape-rendering="crispEdges">
+          <path d="M4 0h3v1h-3zM1 1h2v1h-2zM4 1h3v1h-3zM8 1h2v1h-2zM1 2h9v1h-9zM2 3h7v1h-7zM0 4h4v1h-4zM7 4h4v1h-4zM0 5h4v1h-4zM7 5h4v1h-4zM0 6h4v1h-4zM7 6h4v1h-4zM2 7h7v1h-7zM1 8h9v1h-9zM1 9h2v1h-2zM4 9h3v1h-3zM8 9h2v1h-2zM4 10h3v1h-3z" fill="currentColor"/>
+        </svg>
+        Settings
+      </button>
+    </div>
 
-    <section class="panel settings-panel" id="settings-panel" aria-labelledby="settings-heading" hidden>
-      <div class="settings-head">
+    <section class="panel side-panel stats-panel" id="stats-panel" aria-labelledby="stats-heading" hidden>
+      <div class="panel-head">
+        <h2 id="stats-heading">Stats <span class="sc-sample" title="Real numbers arrive once the buddy keeps a daily log">Sample</span></h2>
+        <button type="button" class="stone-btn" id="stats-close">Close</button>
+      </div>
+      <div class="sc-range" role="group" aria-label="Time range">
+        <button type="button" class="stone-btn" data-range="week">Week</button>
+        <button type="button" class="stone-btn" data-range="day">Today</button>
+      </div>
+      <div class="sc-body" id="stats-body"></div>
+    </section>
+
+    <section class="panel side-panel" id="settings-panel" aria-labelledby="settings-heading" hidden>
+      <div class="panel-head">
         <h2 id="settings-heading">Settings</h2>
         <button type="button" class="stone-btn" id="close-btn">Close</button>
       </div>
+
+      <section class="settings-section" aria-labelledby="color-heading">
+        <h3 id="color-heading">Claude's color</h3>
+        <div class="swatches" id="swatches" role="group" aria-labelledby="color-heading">
+          <button type="button" class="swatch swatch-custom" id="color-more" title="Any color"
+            aria-label="Any color" aria-expanded="false" aria-controls="wheel-box"></button>
+        </div>
+        <div class="wheel-box" id="wheel-box" hidden>
+          <canvas class="wheel" id="wheel" width="41" height="41" tabindex="0" role="slider"
+            aria-label="Claude's color wheel. Left and right change the hue, up and down the strength."
+            aria-valuemin="0" aria-valuemax="360"></canvas>
+        </div>
+      </section>
 
       <section class="settings-section" aria-labelledby="mood-set-heading">
         <h3 id="mood-set-heading">Claude's mood</h3>

@@ -25,7 +25,10 @@ button presses.
   - `buddy/dependencies.py`: builds the single BuddyService and picks its
     output / speaker / detector. Only file to edit when swapping implementations.
   - `buddy/api/hooks.py`: POST /hooks/prompt-submit, /hooks/stop, /hooks/notification (reply 204)
-  - `buddy/api/status.py`: GET /status
+  - `buddy/api/status.py`: GET /status (also state text, change_id, source for the mood page)
+  - `buddy/api/mood.py`: POST /mood, GET/PUT/DELETE /messages (used by the mood page)
+  - `buddy/messages.py`: MessageStore, the editable LCD text per mood (16 chars, printable ASCII)
+  - `buddy/static/`: the mood page, served at http://127.0.0.1:8765/
   - `buddy/api/camera.py`: POST /calibrate (re-measure the "working" head position, 3 s)
   - `buddy/api/button.py`: POST /button (redo button by curl; the STM32 button calls the same
     service method through serial_output). Replies {"result": ...}
@@ -69,18 +72,23 @@ button presses.
 
 ## Behaviour implemented
 
-- Prompt submitted -> WORKING ("thinking..."), stops the watch loop, cuts off speech.
+- LCD text per mood comes from the message store (editable on the mood page, saved to
+  ~/.config/claude-buddy/messages.json). Defaults: IDLE "zzz", WORKING "...", DONE "Done",
+  NEEDS_YOU "!!!". ANNOYED/YELLING use the fixed lines in ESCALATION_STEPS.
+- Prompt submitted -> WORKING, stops the watch loop, cuts off speech.
   The camera is ignored while Claude works.
-- Stop hook -> DONE ("DONE. LOOK UP."), starts the watch loop
-- Notification (permission_prompt) -> NEEDS_YOU ("NEEDS YOU!"), starts the watch loop
+- Stop hook -> DONE, starts the watch loop
+- Notification (permission_prompt) -> NEEDS_YOU, starts the watch loop
 - Watch loop (asyncio task, checks detector every 0.25 s): distracted -> ANNOYED + speech
   at once, YELLING + speech 8 s later, repeat every 15 s, max 3, then quiet. Looking
   back -> stop speech, return to DONE / NEEDS_YOU. Looking away again restarts from ANNOYED.
-- Button (POST /button): only in DONE, ANNOYED, YELLING, and never while the watch loop
-  is waiting on NEEDS_YOU (not WORKING: message would
+- Button (POST /button, or `BTN` from the STM32): only in DONE, ANNOYED, YELLING, and never
+  while the watch loop is waiting on NEEDS_YOU (not WORKING: message would
   queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
   nag, stops speech, sets WORKING "redoing..." BEFORE typing so a double press is
   ignored, then types REDO_MESSAGE. tmux failure -> DONE "REDO FAILED".
+- Mood page (POST /mood): sets IDLE/WORKING/DONE/NEEDS_YOU by hand (source "manual"),
+  stops the watch loop. ANNOYED/YELLING are refused (422), only the watch loop sets them.
 - LCD text is max 16 chars; `_set_state` raises if longer.
 - Hook payload values are never logged (they contain prompts and Claude's replies,
   which can contain secrets). Only field names, at DEBUG level.

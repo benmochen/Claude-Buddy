@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 LCD_WIDTH = 16
 
 DEFAULT_MESSAGES: Dict[BuddyState, str] = {
-    BuddyState.IDLE: "zzz...",
-    BuddyState.WORKING: "thinking...",
-    BuddyState.DONE: "DONE. LOOK UP.",
-    BuddyState.NEEDS_YOU: "NEEDS YOU!",
+    # Short symbols read at a glance from across the desk.
+    BuddyState.IDLE: "zzz",
+    BuddyState.WORKING: "...",
+    BuddyState.DONE: "Done",
+    BuddyState.NEEDS_YOU: "!!!",
 }
 
 
