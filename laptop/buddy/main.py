@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from buddy.api import hooks, mood, status
+from buddy.api import button, hooks, mood, status
 
 # INFO shows state changes. Change to logging.DEBUG to also see which
 # fields each hook sent (names only, never values).
@@ -18,6 +18,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 app = FastAPI(title="Desk buddy")
 app.include_router(hooks.router)
 app.include_router(status.router)
+app.include_router(button.router)
 app.include_router(mood.router)
 
 # The mood page: open http://127.0.0.1:8765/ in a browser.

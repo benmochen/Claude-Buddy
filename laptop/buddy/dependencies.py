@@ -10,6 +10,7 @@ from buddy.detectors.always_distracted import AlwaysDistracted
 from buddy.messages import MessageStore, default_config_path
 from buddy.outputs.console_output import ConsoleOutput
 from buddy.outputs.speaker import Speaker
+from buddy.outputs.tmux_typer import TmuxTyper
 from buddy.services.buddy_service import BuddyService
 
 # Start the server with BUDDY_QUIET=1 in front to print instead of speak.
@@ -21,6 +22,8 @@ _buddy_service = BuddyService(
     output=ConsoleOutput(),
     speaker=Speaker(quiet=_quiet),
     detector=AlwaysDistracted(),
+    # "claude" must match the name in `tmux new -s claude`.
+    claude_input=TmuxTyper(session="claude"),
     messages=MessageStore(default_config_path()),
 )
 
