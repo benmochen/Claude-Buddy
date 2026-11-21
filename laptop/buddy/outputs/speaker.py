@@ -68,6 +68,11 @@ class Speaker:
         if self._afplay_path is None and not quiet:
             logger.warning("'afplay' not found, will print instead of playing sounds")
 
+    def has_sound(self, name: str) -> bool:
+        # True if sounds/<name>.mp3 exists (lets the service skip lines that
+        # haven't been recorded yet).
+        return (SOUNDS_DIR / f"{name}.mp3").exists()
+
     def play(self, name: str) -> None:
         # Plays sounds/<name>.mp3, cutting off whatever was playing before.
         path = SOUNDS_DIR / f"{name}.mp3"

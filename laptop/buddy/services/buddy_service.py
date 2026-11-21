@@ -4,9 +4,10 @@
 
 import asyncio
 import logging
+import random
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from buddy.checkpoint import TurnCheckpoint
 from buddy.messages import LCD_WIDTH, MessageStore
@@ -21,7 +22,37 @@ class EscalationStep:
     after_seconds: int   # seconds after the camera decided you're not looking
     state: BuddyState    # mood to switch to
     lcd_text: str        # row 2 of the LCD (max 16 chars)
-    sound: str           # voice line to play: buddy/sounds/<sound>.mp3
+    sound: str           # which group of voice lines to pick from (SOUND_GROUPS)
+
+
+# Every moment the buddy talks, and the voice lines (buddy/sounds/<name>.mp3)
+# it picks from at random, never the same one twice in a row. A name whose
+# .mp3 doesn't exist yet is skipped, so recording it later is enough: no
+# code change. For the board, also rerun firmware/tools/make_audio_clips.py.
+SOUND_GROUPS: Dict[str, List[str]] = {
+    # Claude just finished.
+    "yay": ["yay", "yay_2", "yay_3"],               # "Done. And honestly? It's pretty good."
+    # Claude needs permission (played right away, and again when nagging).
+    "needs_you": ["needs_you_1", "needs_you_2", "needs_you_3"],  # "Quick question. Can I do this?"
+    # First nag after you looked away from a finished answer.
+    "done": ["done"],                               # "I finished. You're welcome, I guess."
+    # Next nags: disappointed.
+    "annoyed": ["annoyed", "annoyed2", "annoyed_3", "annoyed_4"],  # "Is that phone more interesting than me?"
+    # Last nags: fed up.
+    "yelling": ["yelling", "yelling2", "yelling_3", "yelling_4"],  # "Phone. Down. Now."
+    # After the last repeat, before going quiet.
+    "gave_up": ["gave_up"],                         # "Fine. I'll just wait here."
+    # You looked back while it was nagging.
+    "thanks": ["thanks", "thanks_2", "thanks_3"],   # "There you are."
+    # The redo button.
+    "slam": ["slam", "slam_2", "slam_3"],           # "Rude. Redoing it."
+    "redo_failed": ["redo_failed"],                 # "I can't reach Claude. Check the terminal."
+    # A head slap that undid Claude's last turn.
+    "undo": ["undo", "undo_2"],                     # "Undone. Like it never happened."
+    "nothing_to_undo": ["nothing_to_undo"],         # "Nothing to undo. I didn't touch anything."
+    # A head slap while Claude is still working.
+    "busy": ["busy_1", "busy_2"],                   # "I'm still working. Hold on."
+}
 
 
 # Tune these numbers for the demo. Shorter = funnier on stage.
@@ -32,30 +63,24 @@ class EscalationStep:
 
 # After Claude finished (DONE): proud, then disappointed, then fed up.
 ESCALATION_STEPS = [
-    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.", "done"),       # "I finished. You're welcome, I guess."
-    EscalationStep(8, BuddyState.ANNOYED, "HEY. LOOK UP.", "annoyed"),    # "You're on your phone. That's fine."
-    EscalationStep(16, BuddyState.ANNOYED, "HEY. LOOK UP.", "annoyed2"),  # "I wrote four hundred lines for you."
-    EscalationStep(24, BuddyState.YELLING, "LOOK AT ME!!!", "yelling"),   # "Okay, seriously? Put the phone down."
+    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.", "done"),
+    EscalationStep(8, BuddyState.ANNOYED, "HEY. LOOK UP.", "annoyed"),
+    EscalationStep(16, BuddyState.ANNOYED, "HEY. LOOK UP.", "annoyed"),   # a different annoyed line
+    EscalationStep(24, BuddyState.YELLING, "LOOK AT ME!!!", "yelling"),
 ]
 
 # While Claude waits on a permission prompt (NEEDS_YOU). The "I finished"
-# lines would make no sense here, so it goes straight to the yelling ones.
+# lines would make no sense here. A needs_you line already played when the
+# prompt appeared, so this one is a different one.
 NEEDS_YOU_STEPS = [
-    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.", "yelling2"),   # "Hello? I'm right here!"
+    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.", "needs_you"),
     EscalationStep(8, BuddyState.YELLING, "LOOK AT ME!!!", "yelling"),
 ]
 
-# After the last step, repeat these lines in turn this often, this many
-# times, then go quiet (so it doesn't yell forever if you left the room).
-REPEAT_SOUNDS = ["yelling2", "yelling"]
+# After the last step, a random yelling line this often, this many times,
+# then one gave_up line and quiet (so it doesn't yell forever if you left).
 REPEAT_EVERY_SECONDS = 12
 MAX_REPEATS = 3
-
-# One-off reactions.
-SOUND_FINISHED = "yay"      # Claude just finished: "Done. And honestly? It's pretty good."
-SOUND_LOOKED_BACK = "thanks"  # you looked back while it was nagging
-SOUND_SLAM = "slam"         # the redo button: "Ow. Okay. I'll do it again."
-SOUND_UNDO = "undo"         # a head slap that undid Claude's last turn
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
@@ -128,6 +153,8 @@ class BuddyService:
         # Needed because ANNOYED/YELLING look the same either way, but the
         # button must never type into a permission menu.
         self._waiting_for: Optional[BuddyState] = None
+        # The line each sound group played last, so _say() doesn't repeat it.
+        self._last_line: Dict[str, str] = {}
 
     # ---- Called by the hook routes ----
 
@@ -136,7 +163,7 @@ class BuddyService:
         self._stop_watching()
         # Exception: the slam reaction. The redo button types a prompt, which
         # fires this hook half a second later; that must not cut off "Ow".
-        if self._speaker.current_sound() != SOUND_SLAM:
+        if self._speaker.current_sound() not in SOUND_GROUPS["slam"]:
             self._speaker.stop()
         # A new turn starts: the previous turn's changes can no longer be undone.
         self._checkpoint.start()
@@ -150,12 +177,13 @@ class BuddyService:
         self._last_assistant_message = last_assistant_message
         text = self._messages.get(BuddyState.DONE)
         self._set_state(BuddyState.DONE, text, "hook")
-        self._speaker.play(SOUND_FINISHED)
+        self._say("yay")
         self._start_watching(BuddyState.DONE)
 
     def on_needs_input(self) -> None:
         text = self._messages.get(BuddyState.NEEDS_YOU)
         self._set_state(BuddyState.NEEDS_YOU, text, "hook")
+        self._say("needs_you")   # "I need your permission for something."
         self._start_watching(BuddyState.NEEDS_YOU)
 
     # ---- Called by the button route and the STM32 serial reader ----
@@ -174,8 +202,8 @@ class BuddyService:
         # half a second, and a second press during that time now sees
         # WORKING and is ignored, so Claude never gets the message twice.
         self._stop_watching()
-        # play() cuts off any nag line first, then says "Ow. Okay. I'll do it again."
-        self._speaker.play(SOUND_SLAM)
+        # Cuts off any nag line first, then "Ow. Okay. I'll do it again." or similar.
+        self._say("slam")
         self._set_state(BuddyState.WORKING, "redoing...", "button")
 
         # Type the message into Claude Code. When Claude receives it, the
@@ -184,6 +212,7 @@ class BuddyService:
         if not sent:
             # Usually means Claude isn't running inside `tmux new -s claude`.
             self._set_state(BuddyState.DONE, "REDO FAILED", "button")
+            self._say("redo_failed")
             return "failed: could not type into tmux session 'claude' (see server log)"
         return "sent"
 
@@ -202,11 +231,13 @@ class BuddyService:
 
         if self._state in UNDO_BLOCKED_STATES or self._waiting_for == BuddyState.NEEDS_YOU:
             logger.info("Undo ignored in state %s", self._state.value)
+            if self._state == BuddyState.WORKING:
+                self._say("busy")   # "I'm still working. Hold on."
             return f"ignored: Claude is still in its turn (state {self._state.value})"
 
         count = self._checkpoint.file_count()
         if count == 0:
-            self._speaker.speak("Nothing to undo.")
+            self._say("nothing_to_undo")
             return "nothing to undo"
 
         # You're clearly at the desk: stop nagging before touching files.
@@ -215,7 +246,7 @@ class BuddyService:
         self._set_state(BuddyState.DONE, f"undid {restored} files"[:LCD_WIDTH], "slap")
         # play() cuts off any nag line first. The number of files is shown on
         # the screen and in the reply, the voice line is the same every time.
-        self._speaker.play(SOUND_UNDO)
+        self._say("undo")
         return f"undid {restored} of {count} files"
 
     # ---- Called by the web page ----
@@ -295,6 +326,7 @@ class BuddyService:
             last_nag_at = 0.0      # when we last spoke
             next_step = 0          # index of the next ESCALATION_STEPS entry
             repeats_done = 0       # repeats of the last step so far
+            gave_up = False        # True once the gave_up line has played
 
             while True:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
@@ -305,7 +337,7 @@ class BuddyService:
                     if self._nagging:
                         logger.info("Looking at the screen again, calming down")
                         # play() cuts off the nag line, then says "Thank you."
-                        self._speaker.play(SOUND_LOOKED_BACK)
+                        self._say("thanks")
                         self._set_state(waiting_state, self._messages.get(waiting_state), "nag")
                         self._nagging = False
                     continue
@@ -323,6 +355,7 @@ class BuddyService:
                     nag_started_at = now
                     next_step = 0
                     repeats_done = 0
+                    gave_up = False
 
                 if next_step < len(steps):
                     # Still working through the steps.
@@ -333,17 +366,20 @@ class BuddyService:
                         next_step += 1
                 elif repeats_done < MAX_REPEATS:
                     # All steps done: every REPEAT_EVERY_SECONDS, show the last
-                    # step's mood again with the next line from REPEAT_SOUNDS.
+                    # step's mood again with a random yelling line.
                     if now - last_nag_at >= REPEAT_EVERY_SECONDS:
                         last_step = steps[-1]
-                        sound = REPEAT_SOUNDS[repeats_done % len(REPEAT_SOUNDS)]
-                        self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, sound))
+                        self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, "yelling"))
                         last_nag_at = now
                         repeats_done += 1
-                        if repeats_done == MAX_REPEATS:
-                            logger.info("Gave up nagging after %d repeats", MAX_REPEATS)
-                # else: gave up. Stay quiet until you look back (which calms
-                # down and resets) or send a prompt (which stops this loop).
+                elif not gave_up:
+                    # All repeats done: one resigned line, then quiet until you
+                    # look back (which calms down and resets) or send a prompt
+                    # (which stops this loop).
+                    if now - last_nag_at >= REPEAT_EVERY_SECONDS:
+                        logger.info("Gave up nagging after %d repeats", MAX_REPEATS)
+                        self._say("gave_up")
+                        gave_up = True
 
         except asyncio.CancelledError:
             # Normal: a new event stopped the loop. Must be re-raised so
@@ -356,9 +392,25 @@ class BuddyService:
 
     def _nag(self, step: EscalationStep) -> None:
         self._set_state(step.state, step.lcd_text, "nag")
-        self._speaker.play(step.sound)
+        self._say(step.sound)
 
     # ---- Internal ----
+
+    def _say(self, group: str) -> None:
+        # Play a random line from SOUND_GROUPS[group], skipping lines whose
+        # .mp3 doesn't exist and the line this group played last time.
+        candidates = []
+        for name in SOUND_GROUPS[group]:
+            if self._speaker.has_sound(name):
+                candidates.append(name)
+        if not candidates:
+            logger.info("No voice line recorded for %r yet, staying quiet", group)
+            return
+        if len(candidates) > 1 and self._last_line.get(group) in candidates:
+            candidates.remove(self._last_line[group])
+        name = random.choice(candidates)
+        self._last_line[group] = name
+        self._speaker.play(name)
 
     def _reshow_if_edited(self, changed: Dict[str, str]) -> None:
         # If the message for the mood the buddy is in just changed, show the

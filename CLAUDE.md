@@ -46,10 +46,12 @@ button presses.
     built-in copy), busy time from clip lengths measured with `afinfo` at startup; else
     `afplay sounds/<name>.mp3` (list args, no shell). Cuts off the previous clip (`S:STOP`).
     is_busy(), current_sound(), stop().
-    speak(text) (macOS `say`) only for "Nothing to undo." (no clip recorded for it).
+    speak(text) (macOS `say`) is no longer used. has_sound(name) checks the .mp3 exists.
   - `buddy/sounds/*.mp3`: voice lines made with ElevenLabs (free plan: non-commercial use,
     credit "Voice: ElevenLabs"). Custom voice "Claude Buddy": deadpan, tired, passive-aggressive,
-    young adult American man. yay, done, annoyed, annoyed2, yelling, yelling2, thanks, slam, undo.
+    young adult American man. Grouped by moment in SOUND_GROUPS (buddy_service.py): a random line per
+    moment, never the same twice in a row; names without an .mp3 yet are skipped (just record them:
+    busy_1, busy_2, redo_failed, yay_2, annoyed_3, yelling_3, undo_2 were planned but not recorded).
   - `buddy/outputs/window_focuser.py`: `lsappinfo` tells which app is in front; `open -b <id>`
     brings the Claude Code app to the front (BUDDY_CLAUDE_APP_ID, default com.microsoft.VSCode)
   - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
@@ -99,16 +101,19 @@ button presses.
   NEEDS_YOU "!!!". ANNOYED/YELLING use the fixed lines in ESCALATION_STEPS.
 - Prompt submitted -> WORKING, stops the watch loop, cuts off the current clip (except `slam`,
   so the redo prompt the button types doesn't cut off its own "Ow").
-- Stop hook also plays `yay` ("Done. And honestly? It's pretty good.").
+- Stop hook also plays a `yay` line.
   The camera is ignored while Claude works.
 - Stop hook -> DONE, starts the watch loop
 - Notification (permission_prompt) -> NEEDS_YOU, starts the watch loop
 - Watch loop (asyncio task, checks detector every 0.25 s). Never starts a line while one is
-  playing. After DONE, when distracted: ANNOYED `done` (0 s), `annoyed` (8 s), `annoyed2` (16 s),
-  YELLING `yelling` (24 s), then `yelling2`/`yelling` alternating every 12 s, max 3, then quiet.
-  After NEEDS_YOU: `yelling2` (0 s), `yelling` (8 s), same repeats (the "I finished" lines don't
-  fit a permission prompt). Looking back while nagging -> `thanks`, return to DONE / NEEDS_YOU.
-  Looking away again restarts from the first step. Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS.
+  playing. After DONE, when distracted: ANNOYED `done` group (0 s), `annoyed` (8 s), another
+  `annoyed` (16 s), YELLING `yelling` (24 s), then a `yelling` line every 12 s, max 3, then one
+  `gave_up` line and quiet. After NEEDS_YOU: `needs_you` (0 s), `yelling` (8 s), same repeats.
+  Looking back while nagging -> `thanks`, return to DONE / NEEDS_YOU. Looking away again restarts
+  from the first step. Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS; lines: SOUND_GROUPS.
+- Other voice moments: Notification (permission) -> `needs_you` right away; slap while WORKING ->
+  `busy`; slap with nothing to undo -> `nothing_to_undo`; slap undo -> `undo`; redo button ->
+  `slam`, tmux failure -> `redo_failed`.
 - Button (POST /button, or `BTN` from the STM32): only in DONE, ANNOYED, YELLING, and never
   while the watch loop is waiting on NEEDS_YOU (not WORKING: message would
   queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
