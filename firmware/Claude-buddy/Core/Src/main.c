@@ -29,6 +29,7 @@
 #include "ili9341.h"
 #include "face.h"
 #include "link.h"
+#include "accel.h"
 
 /* USER CODE END Includes */
 
@@ -121,7 +122,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2C1_Init();
+  MX_I2C2_Init();
   MX_USART1_UART_Init();
   MX_SPI1_Init();
   MX_TIM3_Init();
@@ -130,6 +131,9 @@ int main(void)
   TFT_SetBacklight(BACKLIGHT_PERCENT);
   Face_Init();
   Link_Init();                       /* start listening to the laptop */
+  if (!Accel_Init()) {               /* accelerometer for slap detection */
+    Link_SendLine("ERR:ACCEL");      /* laptop logs a warning; everything else still works */
+  }
 
   /* USER CODE END 2 */
 
@@ -156,6 +160,14 @@ int main(void)
     }
     HAL_GPIO_WritePin(BTN_LED_GPIO_Port, BTN_LED_Pin,
                       Face_GetMood() == FACE_OUCH ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+    /* Slap on the head (accelerometer): "> <" right away, and tell the
+     * laptop, which brings the Claude Code window back to the front. */
+    uint16_t slap = Accel_CheckSlap(now);
+    if (slap) {
+      Face_React(FACE_OUCH, OUCH_REACT_MS);
+      Link_SendSlap(slap);
+    }
 
     /* Blue USER button cycles moods: normal -> happy -> sad -> ouch. */
     if (Button_Pressed(&btn_user, now)) {

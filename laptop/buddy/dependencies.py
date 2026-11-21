@@ -12,6 +12,7 @@ from buddy.outputs.console_output import ConsoleOutput
 from buddy.outputs.serial_output import SerialOutput
 from buddy.outputs.speaker import Speaker
 from buddy.outputs.tmux_typer import TmuxTyper
+from buddy.outputs.window_focuser import WindowFocuser
 from buddy.services.buddy_service import BuddyService
 
 # Start the server with BUDDY_QUIET=1 in front to print instead of speak.
@@ -28,6 +29,10 @@ _camera_index = int(os.environ.get("BUDDY_CAMERA", "0"))
 # BUDDY_SERIAL=/dev/cu.usbmodemXXXX picks the port by hand; otherwise the
 # first /dev/cu.usbmodem* port is used.
 _no_serial = os.environ.get("BUDDY_NO_SERIAL") == "1"
+
+# The app Claude Code runs in, brought to the front when you slap the head.
+# Change with BUDDY_CLAUDE_APP="Terminal" (or "iTerm", etc.).
+_claude_app = os.environ.get("BUDDY_CLAUDE_APP", "Visual Studio Code")
 
 if _no_serial:
     _output = ConsoleOutput()
@@ -53,6 +58,8 @@ _buddy_service = BuddyService(
     # The LCD text per mood, editable from the web page, saved to
     # ~/.config/claude-buddy/messages.json.
     messages=MessageStore(default_config_path()),
+    # Slapping the head brings this app back to the front.
+    focuser=WindowFocuser(app_name=_claude_app),
 )
 
 

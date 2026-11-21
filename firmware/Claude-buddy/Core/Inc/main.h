@@ -61,7 +61,7 @@ void Error_Handler(void);
 #define BTN_USER_GPIO_Port GPIOC
 #define TFT_CS_Pin GPIO_PIN_2
 #define TFT_CS_GPIO_Port GPIOA
-#define TFT_DC_Pin GPIO_PIN_4
+#define TFT_DC_Pin GPIO_PIN_3
 #define TFT_DC_GPIO_Port GPIOA
 #define TFT_RST_Pin GPIO_PIN_1
 #define TFT_RST_GPIO_Port GPIOB

@@ -38,8 +38,13 @@ async def lifespan(app: FastAPI):
         # Log the result ("sent", "ignored: ...") once it finishes.
         future.add_done_callback(_log_button_result)
 
-    # Opens the STM32's serial port (if plugged in) and starts listening for BTN.
-    get_output().start(on_button=on_board_button)
+    def on_board_slap() -> None:
+        # Same hand-over as the button, for "SLAP" from the accelerometer.
+        future = asyncio.run_coroutine_threadsafe(get_buddy_service().on_slap(), loop)
+        future.add_done_callback(_log_slap_result)
+
+    # Opens the STM32's serial port (if plugged in) and starts listening for BTN and SLAP.
+    get_output().start(on_button=on_board_button, on_slap=on_board_slap)
     yield
     # Closes the serial port.
     get_output().stop()
@@ -53,6 +58,14 @@ def _log_button_result(future) -> None:
         logging.getLogger(__name__).info("STM32 button: %s", future.result())
     except Exception:
         logging.getLogger(__name__).exception("STM32 button press failed")
+
+
+def _log_slap_result(future) -> None:
+    # Runs when the slap has been handled ("focused" or "failed: ...").
+    try:
+        logging.getLogger(__name__).info("STM32 slap: %s", future.result())
+    except Exception:
+        logging.getLogger(__name__).exception("STM32 slap failed")
 
 
 app = FastAPI(title="Desk buddy", lifespan=lifespan)
