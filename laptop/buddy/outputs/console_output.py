@@ -8,6 +8,14 @@ from buddy.state import BuddyState
 
 
 class ConsoleOutput:
+    # start() and stop() do nothing here. They exist so main.py can treat
+    # ConsoleOutput and SerialOutput the same way.
+    def start(self, on_button) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
     def show(self, state: BuddyState, text: str) -> None:
         # Time like 19:52:07, so you can see how long Claude took.
         now = datetime.now().strftime("%H:%M:%S")

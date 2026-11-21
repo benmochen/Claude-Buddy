@@ -1,0 +1,8 @@
+../Core/Src/link.c:30:13:arm_receive	8	static
+../Core/Src/link.c:36:13:send_text	16	static
+../Core/Src/link.c:42:13:handle_line	16	static
+../Core/Src/link.c:53:6:Link_Init	8	static
+../Core/Src/link.c:62:6:Link_Poll	16	static
+../Core/Src/link.c:83:6:Link_SendButton	8	static
+../Core/Src/link.c:91:6:HAL_UART_RxCpltCallback	24	static
+../Core/Src/link.c:104:6:HAL_UART_ErrorCallback	16	static

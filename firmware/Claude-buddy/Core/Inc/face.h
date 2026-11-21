@@ -22,7 +22,8 @@ typedef enum {
 
 void     Face_Init(void);
 
-/* Switch mood permanently. */
+/* Switch mood permanently. If a Face_React reaction is playing, the new
+ * mood starts when the reaction ends. */
 void     Face_SetMood(FaceMood mood);
 
 /* Show `mood` for `duration_ms`, then return to the current permanent mood. */

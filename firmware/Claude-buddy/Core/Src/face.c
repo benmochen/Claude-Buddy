@@ -172,8 +172,9 @@ static void enter_mood(FaceMood mood, uint32_t now)
 
 void Face_SetMood(FaceMood mood)
 {
-  s_base_mood   = mood;
-  s_react_until = 0;
+  s_base_mood = mood;                   /* remember it as the permanent mood   */
+  if (s_react_until) return;            /* a reaction is playing: let it end,  */
+                                        /* Face_Update switches to this after  */
   enter_mood(mood, HAL_GetTick());
 }
 

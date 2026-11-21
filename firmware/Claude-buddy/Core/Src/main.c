@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "ili9341.h"
 #include "face.h"
+#include "link.h"
 
 /* USER CODE END Includes */
 
@@ -128,6 +129,7 @@ int main(void)
   TFT_Init();
   TFT_SetBacklight(BACKLIGHT_PERCENT);
   Face_Init();
+  Link_Init();                       /* start listening to the laptop */
 
   /* USER CODE END 2 */
 
@@ -139,15 +141,18 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick();
+    Link_Poll();                       /* act on messages from the laptop */
     Face_Update(now);
 
     /* Heartbeat: green LD2 blinks at 2 Hz while the main loop is running. */
     HAL_GPIO_WritePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin,
                       ((now / 250) & 1) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
-    /* Big undo button -> "> <" ouch reaction, then back to the current mood. */
+    /* Big undo button: "> <" right away on the board, and tell the laptop,
+     * which decides whether a redo is allowed and sends the next face. */
     if (Button_Pressed(&btn_undo, now)) {
       Face_React(FACE_OUCH, OUCH_REACT_MS);
+      Link_SendButton();
     }
     HAL_GPIO_WritePin(BTN_LED_GPIO_Port, BTN_LED_Pin,
                       Face_GetMood() == FACE_OUCH ? GPIO_PIN_SET : GPIO_PIN_RESET);
