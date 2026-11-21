@@ -5,13 +5,16 @@
 # version of Spring injecting a singleton @Service bean into a controller.
 
 import os
+from pathlib import Path
 
+from buddy.checkpoint import TurnCheckpoint
 from buddy.detectors.always_distracted import AlwaysDistracted
 from buddy.messages import MessageStore, default_config_path
 from buddy.outputs.console_output import ConsoleOutput
 from buddy.outputs.serial_output import SerialOutput
 from buddy.outputs.speaker import Speaker
 from buddy.outputs.tmux_typer import TmuxTyper
+from buddy.outputs.window_focuser import WindowFocuser
 from buddy.services.buddy_service import BuddyService
 
 # Start the server with BUDDY_QUIET=1 in front to print instead of speak.
@@ -28,6 +31,15 @@ _camera_index = int(os.environ.get("BUDDY_CAMERA", "0"))
 # BUDDY_SERIAL=/dev/cu.usbmodemXXXX picks the port by hand; otherwise the
 # first /dev/cu.usbmodem* port is used.
 _no_serial = os.environ.get("BUDDY_NO_SERIAL") == "1"
+
+# The app Claude Code runs in, as a macOS bundle ID. A slap brings it to the
+# front, or undoes Claude's last turn if it's already in front.
+# For Terminal: BUDDY_CLAUDE_APP_ID=com.apple.Terminal
+_claude_app_id = os.environ.get("BUDDY_CLAUDE_APP_ID", "com.microsoft.VSCode")
+
+# The project folder (the one with .claude/settings.json). Undo only ever
+# touches files inside it. parents[2]: dependencies.py -> buddy -> laptop -> project.
+_project_root = Path(__file__).resolve().parents[2]
 
 if _no_serial:
     _output = ConsoleOutput()
@@ -53,6 +65,10 @@ _buddy_service = BuddyService(
     # The LCD text per mood, editable from the web page, saved to
     # ~/.config/claude-buddy/messages.json.
     messages=MessageStore(default_config_path()),
+    # Slapping the head brings this app to the front (or undoes, see checkpoint).
+    focuser=WindowFocuser(bundle_id=_claude_app_id),
+    # Copies of files from before Claude's latest turn, for undo.
+    checkpoint=TurnCheckpoint(_project_root),
 )
 
 

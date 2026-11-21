@@ -14,10 +14,14 @@
  *
  * Board -> laptop:
  *   BTN      the big undo button was pressed
+ *   SLAP:<n> the head was slapped, n = strength in milli-g (1000 = 1 g)
+ *   ERR:ACCEL the accelerometer did not answer at startup (no slaps)
  *   PONG     answer to PING
  */
 #ifndef LINK_H
 #define LINK_H
+
+#include <stdint.h>
 
 /* Start receiving. Call once after MX_USART1_UART_Init(). */
 void Link_Init(void);
@@ -27,5 +31,11 @@ void Link_Poll(void);
 
 /* Tell the laptop the undo button was pressed. */
 void Link_SendButton(void);
+
+/* Tell the laptop the head was slapped, with its strength in milli-g. */
+void Link_SendSlap(uint16_t strength_mg);
+
+/* Send one line of text as it is (a '\n' is added). */
+void Link_SendLine(const char *text);
 
 #endif /* LINK_H */
