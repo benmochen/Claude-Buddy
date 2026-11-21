@@ -72,6 +72,32 @@
     for (let i = 0; i < 7; i++) week.push(i < t ? data.week[i] : i === t ? today : null);
     return { week: week, today: today, t: t };
   }
+  // Real data can be partial, unsorted or cross midnight; make it safe once, up front.
+  function clean(data) {
+    const today = data.today || {};
+    const segs = [];
+    (today.segments || []).forEach(function (seg) {
+      const start = Number(seg[1]);
+      let end = Number(seg[2]);
+      if (end < start) end = 24; // crossed midnight: count it up to the end of today
+      if (end > start) segs.push([seg[0], start, end]);
+    });
+    segs.sort(function (a, b) { return a[1] - b[1]; });
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      const d = (data.week || [])[i];
+      if (!d) { week.push(null); continue; }
+      week.push({
+        waited: Number(d.waited) || 0, worked: Number(d.worked) || 0, nags: Number(d.nags) || 0,
+        phone: d.phone == null ? null : Number(d.phone) || 0,
+      });
+    }
+    return {
+      week: week,
+      lastWeekAvgWaited: Number(data.lastWeekAvgWaited) || 0,
+      today: { segments: segs, phone: today.phone == null ? null : Number(today.phone) || 0 },
+    };
+  }
   function mean(list) { return list.reduce(function (a, b) { return a + b; }, 0) / list.length; }
 
   // ---------- small DOM helpers ----------
@@ -152,18 +178,29 @@
 
   function hero(label, value, deltaEl) {
     const box = el("div", "sc-hero");
-    box.append(el("p", "sc-label", label), el("p", "sc-big", value), deltaEl);
+    box.append(el("p", "sc-label", label), el("p", "sc-big", value));
+    if (deltaEl) box.appendChild(deltaEl);
     return box;
   }
 
   // ---------- views ----------
+  function empty(root, label, message) {
+    const card = el("div");
+    card.append(hero(label, "0m", null), el("p", "sc-empty", message));
+    root.appendChild(card);
+  }
+
   function renderWeek(root, data) {
     const w = weekWithToday(data);
     const days = [];
-    w.week.forEach(function (d) { if (d) days.push(d); });
+    w.week.forEach(function (d, i) { if (d && (i !== w.t || data.today.segments.length)) days.push(d); });
+    if (!days.length) {
+      empty(root, "Claude waited on you, daily average", "Nothing yet this week. Send Claude a prompt and check back.");
+      return;
+    }
     const waits = days.map(function (d) { return d.waited; });
     const avg = mean(waits);
-    const pct = Math.round((avg - data.lastWeekAvgWaited) / data.lastWeekAvgWaited * 100);
+    const pct = data.lastWeekAvgWaited ? Math.round((avg - data.lastWeekAvgWaited) / data.lastWeekAvgWaited * 100) : null;
 
     const top = Math.max(60, Math.ceil(Math.max.apply(null, waits.concat([avg])) / 30) * 30);
     const bars = w.week.map(function (d, i) {
@@ -172,14 +209,17 @@
     const chart = barChart(bars, top, w.t, avg, "Daily wait this week, average " + hm(avg));
     const card = el("div");
     card.append(hero("Claude waited on you, daily average", hm(avg),
-      delta(Math.abs(pct) + "% " + (pct <= 0 ? "less" : "more") + " than last week", pct)), chart);
+      pct === null ? null : delta(Math.abs(pct) + "% " + (pct <= 0 ? "less" : "more") + " than last week", pct)), chart);
 
     // every row is a daily average, same as the headline, so nothing needs converting
-    let worked = 0, phone = 0, nags = 0;
-    days.forEach(function (d) { worked += d.worked; nags += d.nags; phone += d.phone || 0; });
+    let worked = 0, phone = 0, nags = 0, phoneDays = 0;
+    days.forEach(function (d) {
+      worked += d.worked; nags += d.nags;
+      if (d.phone !== null) { phone += d.phone; phoneDays++; }
+    });
     root.append(card, rows([
       ["WORKING", "Claude worked", hm(worked / days.length) + " a day"],
-      ["NEEDS_YOU", "Phone while Claude waited", hm(phone / days.length) + " a day"],
+      ["NEEDS_YOU", "Phone while Claude waited", phoneDays ? hm(phone / phoneDays) + " a day" : "Needs camera"],
       ["YELLING", "Nags", Math.round(nags / days.length) + " a day"],
     ]));
   }
@@ -189,12 +229,18 @@
     const s = w.today;
     const past = [];
     w.week.forEach(function (d, i) { if (d && i !== w.t) past.push(d.waited); });
-    const diff = s.waited - (past.length ? mean(past) : s.waited);
+    const diff = past.length ? s.waited - mean(past) : null;
 
     // minutes waited in each hour of the day, nag time stacked on top
     const segs = data.today.segments;
+    if (!segs.length) {
+      empty(root, "Claude waited on you today", "Nothing yet today. Send Claude a prompt and check back.");
+      return;
+    }
     const from = Math.floor(segs[0][1]);
-    const to = Math.ceil(segs[segs.length - 1][2]);
+    let last = 0;
+    segs.forEach(function (seg) { last = Math.max(last, seg[2]); });
+    const to = Math.ceil(last);
     const hours = [];
     for (let hr = from; hr < to; hr++) hours.push({ wait: 0, nag: 0 });
     segs.forEach(function (seg) {
@@ -228,7 +274,7 @@
 
     const card = el("div");
     card.append(hero("Claude waited on you today", hm(s.waited),
-      delta(hm(Math.abs(diff)) + " " + (diff <= 0 ? "less" : "more") + " than your average", diff)), chart, legend);
+      diff === null ? null : delta(hm(Math.abs(diff)) + " " + (diff <= 0 ? "less" : "more") + " than your average", diff)), chart, legend);
     root.append(card, rows([
       ["WORKING", "Claude worked", hm(s.worked)],
       ["DONE", "Longest wait", hm(s.longest)],
@@ -244,7 +290,7 @@
       b.onclick = function () { range = b.dataset.range; show(root, data, rangeButtons); };
     });
     root.textContent = "";
-    if (range === "week") renderWeek(root, data); else renderDay(root, data);
+    if (range === "week") renderWeek(root, clean(data)); else renderDay(root, clean(data));
   }
 
   window.Stats = { SAMPLE: SAMPLE, show: show, numText: numText };

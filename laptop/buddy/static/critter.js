@@ -136,5 +136,8 @@
     C.shine = lightEyes ? "#2a1712" : "#ffffff";
   }
 
-  window.Critter = { W: W, H: H, MOODS: MOODS, draw: draw, drawIcon: drawIcon, setColor: setColor };
+  window.Critter = {
+    W: W, H: H, MOODS: MOODS, draw: draw, drawIcon: drawIcon, setColor: setColor,
+    color: function () { return C.body; },
+  };
 })();

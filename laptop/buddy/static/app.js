@@ -17,6 +17,8 @@
     rows: $("msg-rows"), status: $("form-status"), save: $("save-btn"), reset: $("reset-btn"), close: $("close-btn"),
   };
 
+  function moodOf(state) { return MOODS[state] || MOODS.IDLE; } // unknown states fall back to Idle
+  function isOffline() { return document.body.classList.contains("is-offline"); }
   let current = null;       // last /status payload
   let fetchedAt = 0;        // performance.now() when it arrived
   let lastChange = null;    // change_id we've already reacted to
@@ -63,14 +65,31 @@
     b.style.background = pair[1];
     b.title = pair[0];
     b.setAttribute("aria-label", pair[0]);
-    b.addEventListener("click", function () { setColor(pair[1]); });
+    b.addEventListener("click", function () { setColor(pair[1]); showWheel(false); });
     $("swatches").insertBefore(b, more);
     presetBtns.push({ btn: b, hex: pair[1] });
   });
+  // The rainbow square only opens the wheel, so repeat or double clicks can't flicker it shut;
+  // picking a preset or closing Settings folds it away.
+  function showWheel(open) {
+    wheelBox.hidden = !open;
+    more.setAttribute("aria-expanded", String(open));
+    refreshSwatches();
+  }
+  // The white frame marks what you chose: the rainbow square while its wheel is open
+  // or the colour is a custom one, otherwise the matching preset.
+  function refreshSwatches() {
+    const hex = Critter.color();
+    let isPreset = false;
+    presetBtns.forEach(function (p) { if (p.hex === hex) isPreset = true; });
+    const customOn = !wheelBox.hidden || !isPreset;
+    presetBtns.forEach(function (p) { p.btn.setAttribute("aria-pressed", String(!customOn && p.hex === hex)); });
+    more.classList.toggle("is-on", customOn);
+    more.style.setProperty("--custom", isPreset ? "transparent" : hex);
+  }
   more.addEventListener("click", function () {
-    wheelBox.hidden = !wheelBox.hidden;
-    more.setAttribute("aria-expanded", String(!wheelBox.hidden));
-    if (!wheelBox.hidden) wheel.focus();
+    showWheel(true);
+    wheel.focus();
   });
 
   // Hue goes around the wheel, strength from centre (grey) to edge (full colour).
@@ -118,15 +137,32 @@
     wctx.strokeStyle = "#ffffff"; wctx.strokeRect(mx - 1.5, my - 1.5, 3, 3);
   }
 
-  function pickAt(ev) {
+  function wheelPoint(ev) {
     const box = wheel.getBoundingClientRect();
     const dx = (ev.clientX - box.left) / box.width * wheel.width - R - 0.5;
     const dy = (ev.clientY - box.top) / box.height * wheel.height - R - 0.5;
-    pick = { h: (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360, s: Math.min(1, Math.sqrt(dx * dx + dy * dy) / (R - 1)) };
-    setColor(hsvToHex(pick.h, pick.s), true);
+    return { dx: dx, dy: dy, dist: Math.sqrt(dx * dx + dy * dy) };
   }
-  wheel.addEventListener("pointerdown", function (ev) { wheel.setPointerCapture(ev.pointerId); pickAt(ev); });
-  wheel.addEventListener("pointermove", function (ev) { if (wheel.hasPointerCapture(ev.pointerId)) pickAt(ev); });
+  // Dragging fires many moves per frame; apply only the latest one, once per frame.
+  let pendingPick = null;
+  function pickAt(p) {
+    pick = { h: (Math.atan2(p.dy, p.dx) * 180 / Math.PI + 360) % 360, s: Math.min(1, p.dist / (R - 1)) };
+    if (pendingPick) return;
+    pendingPick = requestAnimationFrame(function () {
+      pendingPick = null;
+      setColor(hsvToHex(pick.h, pick.s), true);
+    });
+  }
+  wheel.addEventListener("pointerdown", function (ev) {
+    const p = wheelPoint(ev);
+    if (p.dist > R + 0.5) return; // the empty corners around the round wheel do nothing
+    ev.preventDefault();
+    wheel.focus();
+    wheel.setPointerCapture(ev.pointerId);
+    pickAt(p);
+  });
+  // once dragging, leaving the circle just pins the pick to its edge
+  wheel.addEventListener("pointermove", function (ev) { if (wheel.hasPointerCapture(ev.pointerId)) pickAt(wheelPoint(ev)); });
   wheel.addEventListener("keydown", function (ev) {
     const step = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, 0.1], ArrowDown: [0, -0.1] }[ev.key];
     if (!step) return;
@@ -140,14 +176,7 @@
     try { localStorage.setItem("buddy.color", hex); } catch (e) { /* private mode: just don't remember */ }
     if (!fromWheel) pick = hexToHs(hex);
     drawWheel();
-    let isPreset = false;
-    presetBtns.forEach(function (p) {
-      const on = p.hex === hex;
-      if (on) isPreset = true;
-      p.btn.setAttribute("aria-pressed", String(on));
-    });
-    more.classList.toggle("is-on", !isPreset);
-    more.style.setProperty("--custom", isPreset ? "transparent" : hex);
+    refreshSwatches();
     wheel.setAttribute("aria-valuenow", String(Math.round(pick.h)));
     wheel.setAttribute("aria-valuetext", "hue " + Math.round(pick.h) + " degrees, strength " + Math.round(pick.s * 100) + " percent");
     icons.forEach(function (i) { Critter.drawIcon(i.canvas, i.mood); });
@@ -208,29 +237,39 @@
     const label = document.createElement("span");
     label.textContent = MOODS[mood].label;
     b.append(faceIcon(mood), label);
-    b.addEventListener("click", function () { setMood(mood, b); });
+    b.addEventListener("click", function () { setMood(mood); });
     el.moodButtons.appendChild(b);
     moodBtns[mood] = b;
   });
 
-  async function setMood(mood, btn) {
-    btn.disabled = true;
+  // Replies can arrive out of order (a slow poll after a mood click), so only the
+  // newest request may change the page.
+  let reqSeq = 0;
+  let settledSeq = 0;
+  async function request(method, path, body) {
+    const seq = ++reqSeq;
     try {
-      apply(await api("POST", "/mood", { state: mood }));
+      const s = await api(method, path, body);
+      if (seq > settledSeq) { settledSeq = seq; apply(s); }
     } catch (err) {
-      goOffline();
-    } finally {
-      btn.disabled = current === null;
+      if (seq > settledSeq) { settledSeq = seq; goOffline(); }
     }
+  }
+
+  let moodBusy = false;
+  async function setMood(mood) {
+    if (moodBusy || isOffline()) return;
+    moodBusy = true;
+    await request("POST", "/mood", { state: mood });
+    moodBusy = false;
+  }
+  function setMoodButtonsAvailable(on) {
+    Object.values(moodBtns).forEach(function (b) { b.setAttribute("aria-disabled", String(!on)); });
   }
 
   // ---------- status polling ----------
   async function poll() {
-    try {
-      apply(await api("GET", "/status"));
-    } catch (err) {
-      goOffline();
-    }
+    await request("GET", "/status");
     setTimeout(poll, POLL_MS);
   }
 
@@ -241,14 +280,16 @@
     document.body.classList.remove("is-offline");
     el.offline.hidden = true;
     Scene.setOffline(false);
-    Object.values(moodBtns).forEach(function (b) { b.disabled = false; });
+    setMoodButtonsAvailable(true);
+    // back online with Settings open but the messages never loaded: load them now
+    if (wasOffline && !el.panel.hidden && !msgLoaded) loadMessages();
 
     const first = lastChange === null;
     const changed = !first && s.change_id !== lastChange;
     lastChange = s.change_id;
 
     if (first || changed || wasOffline) {
-      const m = MOODS[s.state] || MOODS.IDLE;
+      const m = moodOf(s.state);
       document.body.dataset.mood = s.state;
       el.moodName.textContent = m.label;
       Critter.drawIcon(el.moodFace, s.state);
@@ -260,21 +301,23 @@
         void el.moodPanel.offsetWidth; // restart the animation
         el.moodPanel.classList.add("slap");
       }
-      // Claude itself finished or needs you: flag it until you've looked.
+      // Claude itself finished or needs you: flag it until you've looked. Only a real
+      // change touches the flag, so a reconnect doesn't clear one you haven't seen.
       const wantsYou = s.state !== "IDLE" && s.state !== "WORKING";
-      setUnseen(changed && s.source !== "manual" && wantsYou);
+      if (changed) setUnseen(s.source !== "manual" && wantsYou);
     }
     if (previewText === null) showLcd(s.text);
     tick();
   }
 
   function goOffline() {
+    if (isOffline()) return; // already showing it; rewriting the live heading would re-announce it
     document.body.classList.add("is-offline");
     el.offline.hidden = false;
     el.moodName.textContent = "Can't find the buddy";
     el.moodTime.textContent = "trying again every second";
     Critter.drawIcon(el.moodFace, "IDLE", true);
-    Object.values(moodBtns).forEach(function (b) { b.disabled = true; });
+    setMoodButtonsAvailable(false);
     Scene.setOffline(true);
     showLcd("");
     showBar(0);
@@ -290,7 +333,7 @@
   });
 
   function updateTitle() {
-    const label = current ? MOODS[current.state].label : "Claude Buddy";
+    const label = current ? moodOf(current.state).label : "Claude Buddy";
     document.title = (unseen ? "(!) " : "") + label + " · Claude Buddy";
   }
 
@@ -303,9 +346,9 @@
     return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
   }
   function tick() {
-    if (!current || document.body.classList.contains("is-offline")) return;
+    if (!current || isOffline()) return;
     const sec = current.seconds_in_state + (performance.now() - fetchedAt) / 1000;
-    Stats.numText(el.moodTime, MOODS[current.state].blurb + " · " + fmt(sec));
+    Stats.numText(el.moodTime, moodOf(current.state).blurb + " · " + fmt(sec));
     showBar(sec);
     updateTitle();
   }
@@ -340,9 +383,9 @@
     el.rows.appendChild(row);
     inputs[mood] = { input: input, count: count, err: err, row: row };
 
-    input.addEventListener("input", function () { validate(mood); previewText = input.value; showLcd(previewText); });
+    input.addEventListener("input", function () { msgDirty = true; validate(mood); previewText = input.value; showLcd(previewText); });
     input.addEventListener("focus", function () { previewText = input.value; showLcd(previewText); });
-    input.addEventListener("blur", function () { previewText = null; if (current) showLcd(current.text); });
+    input.addEventListener("blur", function () { previewText = null; showLcd(current && !isOffline() ? current.text : ""); });
   });
 
   function problem(text) {
@@ -361,11 +404,47 @@
     refreshSave();
     return !msg;
   }
+  // Save and Reset stay off until the messages have loaded (saving empty boxes would
+  // wipe them) and while a save or reset is running. aria-disabled keeps keyboard focus.
+  let msgLoaded = false;
+  let msgBusy = false;
+  let msgDirty = false; // typed since the last load, so a late load must not overwrite it
   function refreshSave() {
-    el.save.disabled = ORDER.some(function (k) { return !!problem(inputs[k].input.value); });
+    const bad = ORDER.some(function (k) { return !!problem(inputs[k].input.value); });
+    el.save.setAttribute("aria-disabled", String(!msgLoaded || msgBusy || bad));
+    el.reset.setAttribute("aria-disabled", String(!msgLoaded || msgBusy));
   }
   function fill(messages) {
     ORDER.forEach(function (k) { inputs[k].input.value = messages[k] || ""; validate(k); });
+    msgDirty = false;
+  }
+  async function loadMessages() {
+    el.status.textContent = "Loading…";
+    refreshSave();
+    try {
+      const m = await api("GET", "/messages");
+      if (!msgDirty) fill(m);
+      msgLoaded = true;
+      el.status.textContent = "";
+    } catch (e) {
+      el.status.textContent = "Couldn't load the messages. Is the buddy service running?";
+    }
+    refreshSave();
+  }
+  async function runMessages(method, body, doneText, failText) {
+    msgBusy = true;
+    refreshSave();
+    try {
+      const saved = await api(method, "/messages", body);
+      fill(saved);
+      el.status.textContent = doneText;
+      // the buddy shows the new text right away, so the preview should too
+      if (current && current.state in saved && previewText === null) { current.text = saved[current.state]; showLcd(current.text); }
+    } catch (err) {
+      el.status.textContent = failText(err);
+    }
+    msgBusy = false;
+    refreshSave();
   }
 
   // ---------- side panels: Stats and Settings, one open at a time ----------
@@ -391,16 +470,11 @@
     el.toggle.setAttribute("aria-expanded", "true");
     const pressed = el.moodButtons.querySelector('[aria-pressed="true"]');
     (pressed || el.moodButtons.querySelector("button") || el.close).focus();
-    el.status.textContent = "Loading…";
-    try {
-      fill(await api("GET", "/messages"));
-      el.status.textContent = "";
-    } catch (e) {
-      el.status.textContent = "Couldn't load the messages. Is the buddy service running?";
-    }
+    loadMessages();
   }
   function closeSettings(keepFocus) {
     el.panel.hidden = true;
+    showWheel(false);
     el.toggle.setAttribute("aria-expanded", "false");
     if (!keepFocus) el.toggle.focus();
   }
@@ -412,31 +486,21 @@
     if (!stats.panel.hidden) closeStats();
   });
 
-  el.form.addEventListener("submit", async function (e) {
+  el.form.addEventListener("submit", function (e) {
     e.preventDefault();
-    if (!ORDER.every(validate)) return;
+    if (el.save.getAttribute("aria-disabled") === "true" || !ORDER.every(validate)) return;
     const body = {};
     ORDER.forEach(function (k) { body[k] = inputs[k].input.value; });
-    el.save.disabled = true;
     el.status.textContent = "Saving…";
-    try {
-      fill(await api("PUT", "/messages", body));
-      el.status.textContent = "Saved. The buddy will say these from now on.";
-    } catch (err) {
-      el.status.textContent = "Not saved: " + err.message + ".";
-    } finally {
-      refreshSave();
-    }
+    runMessages("PUT", body, "Saved. The buddy will say these from now on.",
+      function (err) { return "Not saved: " + err.message + "."; });
   });
 
-  el.reset.addEventListener("click", async function () {
+  el.reset.addEventListener("click", function () {
+    if (el.reset.getAttribute("aria-disabled") === "true") return;
     el.status.textContent = "Resetting…";
-    try {
-      fill(await api("DELETE", "/messages"));
-      el.status.textContent = "Back to the original messages.";
-    } catch (e) {
-      el.status.textContent = "Couldn't reset. Is the buddy service running?";
-    }
+    runMessages("DELETE", undefined, "Back to the original messages.",
+      function () { return "Couldn't reset. Is the buddy service running?"; });
   });
 
   let saved = null;
