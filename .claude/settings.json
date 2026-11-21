@@ -3,14 +3,22 @@
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "http", "url": "http://127.0.0.1:8765/hooks/prompt-submit", "timeout": 2 }
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/hooks/prompt-submit",
+            "timeout": 2
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "http", "url": "http://127.0.0.1:8765/hooks/stop", "timeout": 2 }
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/hooks/stop",
+            "timeout": 2
+          }
         ]
       }
     ],
@@ -18,7 +26,23 @@
       {
         "matcher": "permission_prompt",
         "hooks": [
-          { "type": "http", "url": "http://127.0.0.1:8765/hooks/notification", "timeout": 2 }
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/hooks/notification",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/hooks/pre-tool-use",
+            "timeout": 2
+          }
         ]
       }
     ]

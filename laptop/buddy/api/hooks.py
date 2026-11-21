@@ -56,3 +56,21 @@ async def notification(
     _log_payload("Notification", payload)
     service.on_needs_input()
     return Response(status_code=204)
+
+
+@router.post("/pre-tool-use", status_code=204)
+async def pre_tool_use(
+    payload: Dict[str, Any] = Body(...),
+    service: BuddyService = Depends(get_buddy_service),
+) -> Response:
+    # Fires just before Claude's Edit, Write, MultiEdit or NotebookEdit tool
+    # runs (the matcher in .claude/settings.json picks those tools). We only
+    # read the file path; the new file content in the payload is ignored.
+    _log_payload("PreToolUse", payload)
+    tool_input = payload.get("tool_input") or {}
+    # Edit/Write/MultiEdit call it file_path, NotebookEdit calls it notebook_path.
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if isinstance(file_path, str):
+        service.on_before_edit(file_path)
+    # Always 204 with no body: "go ahead", never blocks Claude's edit.
+    return Response(status_code=204)

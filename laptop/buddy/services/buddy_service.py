@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from buddy.checkpoint import TurnCheckpoint
 from buddy.messages import LCD_WIDTH, MessageStore
 from buddy.state import BuddyState
 
@@ -57,22 +58,29 @@ REDO_MESSAGE = (
 # IDLE: nothing has happened yet, so there's nothing to redo.
 REDO_ALLOWED_STATES = (BuddyState.DONE, BuddyState.ANNOYED, BuddyState.YELLING)
 
+# A slap while VS Code is in front undoes Claude's last turn, but never while
+# Claude is still in that turn: WORKING (it is still editing) or NEEDS_YOU
+# (it is paused on a permission menu and will continue after it).
+UNDO_BLOCKED_STATES = (BuddyState.WORKING, BuddyState.NEEDS_YOU)
+
 
 class BuddyService:
     def __init__(self, output, speaker, detector, claude_input, messages: MessageStore,
-                 focuser) -> None:
+                 focuser, checkpoint: TurnCheckpoint) -> None:
         # output:       anything with show(state, text)   (SerialOutput or ConsoleOutput)
         # speaker:      anything with speak(text), stop() (Speaker)
         # detector:     anything with is_distracted()     (AttentionDetector, or AlwaysDistracted)
         # claude_input: anything with async send(text)    (TmuxTyper)
         # messages:     the LCD text for IDLE/WORKING/DONE/NEEDS_YOU, editable from the web page
-        # focuser:      anything with focus() -> bool     (WindowFocuser)
+        # focuser:      anything with is_in_front(), focus() (WindowFocuser)
+        # checkpoint:   copies of files from before Claude's latest turn
         self._output = output
         self._speaker = speaker
         self._detector = detector
         self._claude_input = claude_input
         self._messages = messages
         self._focuser = focuser
+        self._checkpoint = checkpoint
 
         self._state = BuddyState.IDLE
         # The text currently on the LCD, so the web page can preview it.
@@ -108,7 +116,13 @@ class BuddyService:
         # You're back: stop watching and nagging immediately, mid-sentence if needed.
         self._stop_watching()
         self._speaker.stop()
+        # A new turn starts: the previous turn's changes can no longer be undone.
+        self._checkpoint.start()
         self._set_state(BuddyState.WORKING, self._messages.get(BuddyState.WORKING), "hook")
+
+    def on_before_edit(self, file_path: str) -> None:
+        # PreToolUse hook: Claude is about to change this file. Save a copy first.
+        self._checkpoint.save_before_edit(file_path)
 
     def on_claude_finished(self, last_assistant_message: Optional[str]) -> None:
         self._last_assistant_message = last_assistant_message
@@ -152,12 +166,32 @@ class BuddyService:
     # ---- Called by the slap route and the STM32 serial reader ----
 
     async def on_slap(self) -> str:
-        # Someone slapped the buddy's head: bring Claude Code back in front.
-        # Works in every state and does not change the state or the face
-        # (the board already showed "> <" on its own).
-        if self._focuser.focus():
-            return "focused"
-        return "failed: could not bring the Claude Code app to the front (see server log)"
+        # Someone slapped the buddy's head. Two cases:
+        #   1. You're in another app: bring Claude Code (VS Code) to the front.
+        #   2. You're already in VS Code: undo the files Claude changed in its
+        #      latest turn.
+        # The board already showed "> <" on its own.
+        if not self._focuser.is_in_front():
+            if self._focuser.focus():
+                return "focused"
+            return "failed: could not bring the Claude Code app to the front (see server log)"
+
+        if self._state in UNDO_BLOCKED_STATES or self._waiting_for == BuddyState.NEEDS_YOU:
+            logger.info("Undo ignored in state %s", self._state.value)
+            return f"ignored: Claude is still in its turn (state {self._state.value})"
+
+        count = self._checkpoint.file_count()
+        if count == 0:
+            self._speaker.speak("Nothing to undo.")
+            return "nothing to undo"
+
+        # You're clearly at the desk: stop nagging before touching files.
+        self._stop_watching()
+        self._speaker.stop()
+        restored = self._checkpoint.undo()
+        self._set_state(BuddyState.DONE, f"undid {restored} files"[:LCD_WIDTH], "slap")
+        self._speaker.speak(f"Undid {restored} files.")
+        return f"undid {restored} of {count} files"
 
     # ---- Called by the web page ----
 

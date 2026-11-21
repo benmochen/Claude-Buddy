@@ -1,37 +1,66 @@
-# Brings the app that runs Claude Code (VS Code by default) to the front
-# of the screen. Used when you slap the buddy's head.
+# Knows which app is in front of the screen, and can bring the app that
+# runs Claude Code (VS Code by default) to the front. Used when you slap
+# the buddy's head.
 #
-# It uses the macOS `open -a <App>` command. If that app is already in
-# front, nothing changes; if you were on Safari, Discord, etc., that
-# app jumps back in front. No extra macOS permissions are needed.
+# Apps are identified by their "bundle ID", macOS's unique name for an app,
+# for example "com.microsoft.VSCode" or "com.apple.Terminal". (The display
+# name is less reliable: VS Code calls itself "Code" internally.)
+#
+# Both commands used here (`lsappinfo` and `open`) come with macOS and need
+# no extra permissions.
 
 import logging
 import subprocess
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class WindowFocuser:
-    def __init__(self, app_name: str) -> None:
-        # The macOS app name as shown in /Applications without ".app",
-        # for example "Terminal", "iTerm", or "Visual Studio Code".
-        self._app_name = app_name
+    def __init__(self, bundle_id: str) -> None:
+        # The app Claude Code runs in, for example "com.microsoft.VSCode".
+        self._bundle_id = bundle_id
+
+    def is_in_front(self) -> bool:
+        # True if the Claude Code app is the app you are using right now.
+        return self._front_bundle_id() == self._bundle_id
 
     def focus(self) -> bool:
-        # Returns True if macOS brought the app to the front.
-        # A list (no shell), so the app name can't be run as a shell command.
-        command = ["open", "-a", self._app_name]
+        # Brings the Claude Code app to the front. Returns True on success.
+        # `open -b <bundle id>` opens the app, or just brings it forward if
+        # it's already running.
+        result = self._run(["open", "-b", self._bundle_id])
+        return result is not None
+
+    def _front_bundle_id(self) -> Optional[str]:
+        # `lsappinfo front` prints an ID for the front app, like "ASN:0x0-0x73073:".
+        front = self._run(["lsappinfo", "front"])
+        if not front:
+            return None
+        # `lsappinfo info <ID>` prints several lines; one of them looks like
+        #     bundleID="com.microsoft.VSCode"
+        info = self._run(["lsappinfo", "info", front.strip()])
+        if info is None:
+            return None
+        for line in info.splitlines():
+            line = line.strip()
+            if line.startswith('bundleID="'):
+                # Cut off 'bundleID="' at the start and '"' at the end.
+                return line[len('bundleID="'):-1]
+        return None
+
+    def _run(self, command: List[str]) -> Optional[str]:
+        # Runs a command (a list, no shell). Returns its printed output,
+        # or None if it failed.
         try:
             # timeout: don't wait forever if macOS is slow to answer.
             result = subprocess.run(command, capture_output=True, text=True, timeout=3)
         except subprocess.TimeoutExpired:
-            logger.warning("'open -a %s' did not finish within 3 seconds", self._app_name)
-            return False
-
-        # returncode 0 means success. Anything else usually means the app
-        # name is wrong ("Unable to find application named ...").
+            logger.warning("%s did not finish within 3 seconds", command[0])
+            return None
+        # returncode 0 means success. For `open -b`, anything else usually
+        # means the bundle ID is wrong ("Unable to find application ...").
         if result.returncode != 0:
-            logger.warning("Could not bring %s to the front: %s",
-                           self._app_name, result.stderr.strip())
-            return False
-        return True
+            logger.warning("%s failed: %s", command[0], result.stderr.strip())
+            return None
+        return result.stdout
