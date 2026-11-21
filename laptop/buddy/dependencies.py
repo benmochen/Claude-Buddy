@@ -7,6 +7,7 @@
 import os
 
 from buddy.detectors.always_distracted import AlwaysDistracted
+from buddy.messages import MessageStore, default_config_path
 from buddy.outputs.console_output import ConsoleOutput
 from buddy.outputs.serial_output import SerialOutput
 from buddy.outputs.speaker import Speaker
@@ -49,6 +50,9 @@ _buddy_service = BuddyService(
     detector=_detector,
     # "claude" must match the name in `tmux new -s claude`.
     claude_input=TmuxTyper(session="claude"),
+    # The LCD text per mood, editable from the web page, saved to
+    # ~/.config/claude-buddy/messages.json.
+    messages=MessageStore(default_config_path()),
 )
 
 
