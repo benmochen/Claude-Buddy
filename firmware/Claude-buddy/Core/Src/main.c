@@ -19,11 +19,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "i2c.h"
+#include "spi.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ili9341.h"
+#include "face.h"
 
 /* USER CODE END Includes */
 
@@ -56,6 +60,34 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/* Simple debounced active-low button: returns 1 once per press. */
+typedef struct {
+  GPIO_TypeDef *port;
+  uint16_t      pin;
+  uint8_t       stable;      /* 1 = released (pull-up), 0 = pressed */
+  uint8_t       last_raw;
+  uint32_t      changed_at;
+} Button;
+
+static uint8_t Button_Pressed(Button *b, uint32_t now)
+{
+  uint8_t raw = (HAL_GPIO_ReadPin(b->port, b->pin) == GPIO_PIN_SET);
+  if (raw != b->last_raw) {
+    b->last_raw   = raw;
+    b->changed_at = now;
+  } else if (raw != b->stable && (now - b->changed_at) >= 30) {
+    b->stable = raw;
+    return (raw == 0);       /* fire on press, not release */
+  }
+  return 0;
+}
+
+static Button btn_undo = { BTN_UNDO_GPIO_Port, BTN_UNDO_Pin, 1, 1, 0 };
+static Button btn_user = { BTN_USER_GPIO_Port, BTN_USER_Pin, 1, 1, 0 };
+
+#define BACKLIGHT_PERCENT 70
+#define OUCH_REACT_MS     1500
 
 /* USER CODE END 0 */
 
@@ -90,7 +122,12 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_USART1_UART_Init();
+  MX_SPI1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  TFT_Init();
+  TFT_SetBacklight(BACKLIGHT_PERCENT);
+  Face_Init();
 
   /* USER CODE END 2 */
 
@@ -101,6 +138,24 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint32_t now = HAL_GetTick();
+    Face_Update(now);
+
+    /* Heartbeat: green LD2 blinks at 2 Hz while the main loop is running. */
+    HAL_GPIO_WritePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin,
+                      ((now / 250) & 1) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+    /* Big undo button -> "> <" ouch reaction, then back to the current mood. */
+    if (Button_Pressed(&btn_undo, now)) {
+      Face_React(FACE_OUCH, OUCH_REACT_MS);
+    }
+    HAL_GPIO_WritePin(BTN_LED_GPIO_Port, BTN_LED_Pin,
+                      Face_GetMood() == FACE_OUCH ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+    /* Blue USER button cycles moods: normal -> happy -> sad -> ouch. */
+    if (Button_Pressed(&btn_user, now)) {
+      Face_SetMood((FaceMood)((Face_GetMood() + 1) % FACE_MOOD_COUNT));
+    }
   }
   /* USER CODE END 3 */
 }
