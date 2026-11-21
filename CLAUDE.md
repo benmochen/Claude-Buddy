@@ -18,13 +18,17 @@ button presses.
 ## Repo layout
 
 - `.claude/settings.json`: HTTP hooks (UserPromptSubmit, Stop, Notification with
-  matcher `permission_prompt` only) posting to `http://127.0.0.1:8765/hooks/...`
+  matcher `permission_prompt` only, PreToolUse with matcher `Edit|Write|MultiEdit|NotebookEdit`)
+  posting to `http://127.0.0.1:8765/hooks/...`
 - `laptop/` (Python, FastAPI, run from this folder)
   - `buddy/main.py`: creates the app, includes routers
   - `buddy/state.py`: BuddyState enum: IDLE, WORKING, DONE, NEEDS_YOU, ANNOYED, YELLING
   - `buddy/dependencies.py`: builds the single BuddyService and picks its
     output / speaker / detector. Only file to edit when swapping implementations.
-  - `buddy/api/hooks.py`: POST /hooks/prompt-submit, /hooks/stop, /hooks/notification (reply 204)
+  - `buddy/api/hooks.py`: POST /hooks/prompt-submit, /hooks/stop, /hooks/notification,
+    /hooks/pre-tool-use (file path only; reply 204, never blocks)
+  - `buddy/checkpoint.py`: TurnCheckpoint, in-memory copies of files from before Claude's
+    first edit of each file in the latest turn; undo() restores them, deletes files Claude created
   - `buddy/api/status.py`: GET /status (also state text, change_id, source for the mood page)
   - `buddy/api/mood.py`: POST /mood, GET/PUT/DELETE /messages (used by the mood page)
   - `buddy/messages.py`: MessageStore, the editable LCD text per mood (16 chars, printable ASCII)
@@ -38,8 +42,8 @@ button presses.
     `/dev/cu.usbmodem*`), also prints like ConsoleOutput; reader thread turns `BTN` into
     `on_button_pressed()` via `asyncio.run_coroutine_threadsafe` (wired in main.py lifespan)
   - `buddy/outputs/speaker.py`: macOS `say` via subprocess.Popen (list args, no shell)
-  - `buddy/outputs/window_focuser.py`: `open -a <app>` brings the Claude Code app to the front
-    (app from BUDDY_CLAUDE_APP, default "Visual Studio Code")
+  - `buddy/outputs/window_focuser.py`: `lsappinfo` tells which app is in front; `open -b <id>`
+    brings the Claude Code app to the front (BUDDY_CLAUDE_APP_ID, default com.microsoft.VSCode)
   - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
   - `buddy/detectors/attention_detector.py`: webcam + MediaPipe Face Landmarker in a
     background thread (15 fps). Not looking = head down > 10 deg vs calibrated working
@@ -61,7 +65,7 @@ button presses.
   Env vars in front: `BUDDY_QUIET=1` prints `[SAY] ...` instead of speaking;
   `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1;
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port;
-  `BUDDY_CLAUDE_APP="Terminal"` changes which app a slap brings to the front (default Visual Studio Code).
+  `BUDDY_CLAUDE_APP_ID=com.apple.Terminal` changes the Claude Code app (default com.microsoft.VSCode).
   Plug the board in BEFORE starting the server (the port is only looked for at startup).
   Look at the screen while it starts (calibration). Recalibrate: `curl -X POST http://127.0.0.1:8765/calibrate`
 - Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude`, then `claude` inside it
@@ -92,8 +96,12 @@ button presses.
   queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
   nag, stops speech, sets WORKING "redoing..." BEFORE typing so a double press is
   ignored, then types REDO_MESSAGE. tmux failure -> DONE "REDO FAILED".
-- Head slap (accelerometer, `SLAP:<mg>` from the STM32, or POST /slap): brings the Claude Code
-  app to the front with `open -a`. Works in any state, does not change the state. The board
+- Head slap (accelerometer, `SLAP:<mg>` from the STM32, or POST /slap), two cases:
+  another app in front -> bring VS Code to the front (any state, no state change);
+  VS Code already in front -> undo the files Claude changed in its latest turn (from the
+  PreToolUse checkpoint), stop nagging, DONE "undid N files", say "Undid N files.".
+  Undo refused in WORKING / NEEDS_YOU / nagging about a permission prompt (Claude is mid-turn).
+  A new prompt clears the checkpoint; a second slap says "Nothing to undo." The board
   shows `> <` for 1.5 s on its own. Firmware: jolt = distance of the reading from a slow running
   average; > 700 mg = slap; 1.5 s cooldown so the spring wobble is not counted again.
 - Mood page (POST /mood): sets IDLE/WORKING/DONE/NEEDS_YOU by hand (source "manual"),
@@ -216,6 +224,10 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
   restarting the server (no reconnect).
 - Slap threshold (700 mg) and cooldown (1.5 s) are untuned guesses; tune in accel.c from the
   logged strengths.
+- Undo only covers Edit/Write/MultiEdit/NotebookEdit. Changes made through Bash (rm, mv, sed,
+  git) are NOT undone. Claude is not told about the undo, so its memory of the files is stale.
+- Undo copies are in memory only: restarting the server loses them. Files outside the project
+  folder are never saved or restored.
 - Shortcut: a slap focuses the whole app, not a specific window or the Claude Code panel; with
   several VS Code windows, macOS shows the last used one.
 - Shortcut: `T:` status text is sent but not shown on the TFT.
