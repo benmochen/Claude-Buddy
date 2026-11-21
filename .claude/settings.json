@@ -20,12 +20,6 @@
         "hooks": [
           { "type": "http", "url": "http://127.0.0.1:8765/hooks/notification", "timeout": 2 }
         ]
-      },
-      {
-        "matcher": "idle_prompt",
-        "hooks": [
-          { "type": "http", "url": "http://127.0.0.1:8765/hooks/notification", "timeout": 2 }
-        ]
       }
     ]
   }
