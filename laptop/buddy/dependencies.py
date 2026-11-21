@@ -7,6 +7,7 @@
 import os
 
 from buddy.detectors.always_distracted import AlwaysDistracted
+from buddy.messages import MessageStore, default_config_path
 from buddy.outputs.console_output import ConsoleOutput
 from buddy.outputs.speaker import Speaker
 from buddy.services.buddy_service import BuddyService
@@ -20,6 +21,7 @@ _buddy_service = BuddyService(
     output=ConsoleOutput(),
     speaker=Speaker(quiet=_quiet),
     detector=AlwaysDistracted(),
+    messages=MessageStore(default_config_path()),
 )
 
 

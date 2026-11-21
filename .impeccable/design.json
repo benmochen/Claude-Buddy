@@ -1,0 +1,788 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-20T00:00:00Z",
+  "title": "Design System: Claude Buddy",
+  "extensions": {
+    "colorMeta": {
+      "critter-orange": {
+        "role": "primary",
+        "displayName": "Claude Clay Orange",
+        "canonical": "#d97757",
+        "tonalRamp": [
+          "#1f0000",
+          "#431303",
+          "#6b2c16",
+          "#96462c",
+          "#c26344",
+          "#e18c70",
+          "#ffb49c",
+          "#ffdec9"
+        ]
+      },
+      "critter-ink": {
+        "role": "primary",
+        "displayName": "Critter Ink",
+        "canonical": "#2a1712",
+        "tonalRamp": [
+          "#110907",
+          "#2e221e",
+          "#4e3e39",
+          "#705c56",
+          "#957c75",
+          "#b69f99",
+          "#d8c4bf",
+          "#fbeae6"
+        ]
+      },
+      "sticker-cream": {
+        "role": "primary",
+        "displayName": "Sticker Cream",
+        "canonical": "#fff8ee",
+        "tonalRamp": [
+          "#0d0b08",
+          "#282520",
+          "#45413b",
+          "#666059",
+          "#878179",
+          "#aaa49c",
+          "#cdc8c1",
+          "#f2eee8"
+        ]
+      },
+      "mood-idle": {
+        "role": "secondary",
+        "displayName": "Periwinkle (IDLE)",
+        "canonical": "#a9b4f5",
+        "tonalRamp": [
+          "#07081d",
+          "#1e2240",
+          "#393e66",
+          "#555d8f",
+          "#747dba",
+          "#98a1d8",
+          "#bdc6f6",
+          "#e4ecff"
+        ]
+      },
+      "mood-working": {
+        "role": "secondary",
+        "displayName": "Butter Yellow (WORKING)",
+        "canonical": "#ffd66b",
+        "tonalRamp": [
+          "#160800",
+          "#352100",
+          "#573d00",
+          "#7c5c00",
+          "#a37c00",
+          "#c2a148",
+          "#e3c67e",
+          "#ffecb2"
+        ]
+      },
+      "mood-done": {
+        "role": "secondary",
+        "displayName": "Mint (DONE)",
+        "canonical": "#7fe0a8",
+        "tonalRamp": [
+          "#001203",
+          "#002f15",
+          "#00502e",
+          "#197348",
+          "#349864",
+          "#69b98b",
+          "#98dbb2",
+          "#c7fedb"
+        ]
+      },
+      "mood-needs-you": {
+        "role": "secondary",
+        "displayName": "Hot Pink (NEEDS_YOU)",
+        "canonical": "#ff86b0",
+        "tonalRamp": [
+          "#20000a",
+          "#460924",
+          "#6f2140",
+          "#9a3a5f",
+          "#c75580",
+          "#e680a3",
+          "#ffabc7",
+          "#ffd6ed"
+        ]
+      },
+      "mood-offline": {
+        "role": "secondary",
+        "displayName": "Slate (offline)",
+        "canonical": "#9a9cad",
+        "tonalRamp": [
+          "#0a0b10",
+          "#23242c",
+          "#40414c",
+          "#5f606e",
+          "#7f8191",
+          "#a2a4b3",
+          "#c6c8d5",
+          "#eceef9"
+        ]
+      },
+      "hud-navy": {
+        "role": "neutral",
+        "displayName": "HUD Navy",
+        "canonical": "#11152a",
+        "tonalRamp": [
+          "#090b14",
+          "#212432",
+          "#3d4153",
+          "#5a6077",
+          "#7a819c",
+          "#9ea4bc",
+          "#c3c8de",
+          "#e9eeff"
+        ]
+      },
+      "hud-edge": {
+        "role": "neutral",
+        "displayName": "HUD Edge",
+        "canonical": "#0a0c1a",
+        "tonalRamp": [
+          "#090b11",
+          "#23242e",
+          "#3f414e",
+          "#5d6070",
+          "#7d8194",
+          "#a0a4b5",
+          "#c5c8d8",
+          "#ebeefb"
+        ]
+      },
+      "hud-rim": {
+        "role": "neutral",
+        "displayName": "HUD Rim",
+        "canonical": "rgb(255 255 255 / 0.14)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "hud-ink": {
+        "role": "neutral",
+        "displayName": "Warm Paper Ink",
+        "canonical": "#f5f3ec",
+        "tonalRamp": [
+          "#0c0b09",
+          "#262522",
+          "#43423e",
+          "#63615c",
+          "#84827c",
+          "#a7a59f",
+          "#cac9c4",
+          "#f0eeea"
+        ]
+      },
+      "hud-ink-soft": {
+        "role": "neutral",
+        "displayName": "Lavender Mist",
+        "canonical": "#c8cbe6",
+        "tonalRamp": [
+          "#0a0a13",
+          "#232430",
+          "#3f4151",
+          "#5d5f74",
+          "#7e8099",
+          "#a1a3b9",
+          "#c5c8db",
+          "#ebedfe"
+        ]
+      },
+      "ink-on-hue": {
+        "role": "neutral",
+        "displayName": "Ink on Hue",
+        "canonical": "#14162a",
+        "tonalRamp": [
+          "#090a13",
+          "#222431",
+          "#3e4152",
+          "#5c6075",
+          "#7c809a",
+          "#a0a3bb",
+          "#c4c8dc",
+          "#eaedff"
+        ]
+      },
+      "stone-grey": {
+        "role": "neutral",
+        "displayName": "Stone Grey",
+        "canonical": "#6a6a6a",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "stone-hover": {
+        "role": "neutral",
+        "displayName": "Dusk Stone",
+        "canonical": "#5c6494",
+        "tonalRamp": [
+          "#07091a",
+          "#1f233c",
+          "#3a3f60",
+          "#575e87",
+          "#767fb0",
+          "#99a2cf",
+          "#bfc7ee",
+          "#e6edff"
+        ]
+      },
+      "stone-pressed": {
+        "role": "neutral",
+        "displayName": "Pressed Stone",
+        "canonical": "#4f4f53",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#424244",
+          "#616164",
+          "#828286",
+          "#a4a4a8",
+          "#c9c9cc",
+          "#eeeef1"
+        ]
+      },
+      "stone-disabled": {
+        "role": "neutral",
+        "displayName": "Dead Stone",
+        "canonical": "#333333",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "stone-edge": {
+        "role": "neutral",
+        "displayName": "Stone Edge",
+        "canonical": "#0e0e0e",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "stone-label": {
+        "role": "neutral",
+        "displayName": "Stone Label",
+        "canonical": "#f2f2f2",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "stone-label-shadow": {
+        "role": "neutral",
+        "displayName": "Label Shadow",
+        "canonical": "#3b3b3b",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "signal-yellow": {
+        "role": "neutral",
+        "displayName": "Signal Yellow",
+        "canonical": "#ffffa0",
+        "tonalRamp": [
+          "#0e0c00",
+          "#292700",
+          "#474500",
+          "#67650b",
+          "#898726",
+          "#abaa5d",
+          "#cece8d",
+          "#f2f3bd"
+        ]
+      },
+      "lcd-bezel": {
+        "role": "neutral",
+        "displayName": "LCD Bezel",
+        "canonical": "#142009",
+        "tonalRamp": [
+          "#080d05",
+          "#20281a",
+          "#3c4634",
+          "#59664f",
+          "#79886d",
+          "#9caa92",
+          "#c2ceb9",
+          "#e8f2e1"
+        ]
+      },
+      "lcd-glass": {
+        "role": "neutral",
+        "displayName": "LCD Glass",
+        "canonical": "#9cc23f",
+        "tonalRamp": [
+          "#050f00",
+          "#1b2c00",
+          "#354b00",
+          "#516d00",
+          "#6e9100",
+          "#93b349",
+          "#b9d680",
+          "#e1fab3"
+        ]
+      },
+      "lcd-ink": {
+        "role": "neutral",
+        "displayName": "LCD Ink",
+        "canonical": "#13200a",
+        "tonalRamp": [
+          "#080d05",
+          "#20281b",
+          "#3b4635",
+          "#586650",
+          "#78886e",
+          "#9cab93",
+          "#c1ceb9",
+          "#e8f3e1"
+        ]
+      },
+      "field-black": {
+        "role": "neutral",
+        "displayName": "Field Black",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "field-edge": {
+        "role": "neutral",
+        "displayName": "Field Edge",
+        "canonical": "#a0a0a0",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "error-pink": {
+        "role": "neutral",
+        "displayName": "Error Pink",
+        "canonical": "#ff6b8e",
+        "tonalRamp": [
+          "#240005",
+          "#4c001a",
+          "#781334",
+          "#a62c4f",
+          "#d6476d",
+          "#f57792",
+          "#ffa4b8",
+          "#ffd1e0"
+        ]
+      },
+      "error-text": {
+        "role": "neutral",
+        "displayName": "Error Text",
+        "canonical": "#ffb3c8",
+        "tonalRamp": [
+          "#19030a",
+          "#3a1823",
+          "#5f3240",
+          "#874d5e",
+          "#af6b7f",
+          "#cf90a2",
+          "#efb8c6",
+          "#ffe0ec"
+        ]
+      },
+      "sky-deep": {
+        "role": "tertiary",
+        "displayName": "Sky Deep",
+        "tonalRamp": [
+          "#1b4fc9",
+          "#2463d6",
+          "#2f78e0",
+          "#4590ea",
+          "#62a7f0",
+          "#86bdf4",
+          "#a9d1f7",
+          "#d4e8fb"
+        ],
+        "canonical": "#1b4fc9",
+        "note": "Ramp is the scene.js palette (7 dithered steps) plus a synthesized pale end."
+      },
+      "sky-blue": {
+        "role": "tertiary",
+        "displayName": "Sky Blue",
+        "tonalRamp": [
+          "#1b4fc9",
+          "#2463d6",
+          "#2f78e0",
+          "#4590ea",
+          "#62a7f0",
+          "#86bdf4",
+          "#a9d1f7",
+          "#d4e8fb"
+        ],
+        "canonical": "#2f78e0",
+        "note": "Ramp is the scene.js palette (7 dithered steps) plus a synthesized pale end."
+      },
+      "sky-haze": {
+        "role": "tertiary",
+        "displayName": "Sky Haze",
+        "tonalRamp": [
+          "#1b4fc9",
+          "#2463d6",
+          "#2f78e0",
+          "#4590ea",
+          "#62a7f0",
+          "#86bdf4",
+          "#a9d1f7",
+          "#d4e8fb"
+        ],
+        "canonical": "#a9d1f7",
+        "note": "Ramp is the scene.js palette (7 dithered steps) plus a synthesized pale end."
+      },
+      "grass-deep": {
+        "role": "tertiary",
+        "displayName": "Grass Deep",
+        "tonalRamp": [
+          "#1f5e17",
+          "#2b7a1c",
+          "#3a9420",
+          "#4fab25",
+          "#69c22c",
+          "#86d43a",
+          "#a6e34d",
+          "#c9f08a"
+        ],
+        "canonical": "#1f5e17",
+        "note": "Ramp is the scene.js palette (7 dithered steps) plus a synthesized pale end."
+      },
+      "grass-green": {
+        "role": "tertiary",
+        "displayName": "Grass Green",
+        "tonalRamp": [
+          "#1f5e17",
+          "#2b7a1c",
+          "#3a9420",
+          "#4fab25",
+          "#69c22c",
+          "#86d43a",
+          "#a6e34d",
+          "#c9f08a"
+        ],
+        "canonical": "#4fab25",
+        "note": "Ramp is the scene.js palette (7 dithered steps) plus a synthesized pale end."
+      },
+      "grass-bright": {
+        "role": "tertiary",
+        "displayName": "Grass Bright",
+        "tonalRamp": [
+          "#1f5e17",
+          "#2b7a1c",
+          "#3a9420",
+          "#4fab25",
+          "#69c22c",
+          "#86d43a",
+          "#a6e34d",
+          "#c9f08a"
+        ],
+        "canonical": "#a6e34d",
+        "note": "Ramp is the scene.js palette (7 dithered steps) plus a synthesized pale end."
+      },
+      "alert-red": {
+        "role": "tertiary",
+        "displayName": "Alert Red",
+        "canonical": "#e0245e",
+        "tonalRamp": [
+          "#290003",
+          "#530015",
+          "#81002d",
+          "#b30d47",
+          "#e52d63",
+          "#ff6989",
+          "#ff9ab0",
+          "#ffcada"
+        ]
+      },
+      "bubble-ink": {
+        "role": "tertiary",
+        "displayName": "Bubble Ink",
+        "canonical": "#1c1f33",
+        "tonalRamp": [
+          "#090a13",
+          "#222430",
+          "#3e4151",
+          "#5c6075",
+          "#7c819a",
+          "#9fa4ba",
+          "#c4c8dc",
+          "#eaeefe"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Mood Name",
+        "purpose": "The current mood's name in its hue; 30px under 720px."
+      },
+      "headline": {
+        "displayName": "Panel Heading",
+        "purpose": "Panel headings such as the screen-messages editor."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Status lines, hints, form status."
+      },
+      "label": {
+        "displayName": "Stone Label",
+        "purpose": "Stone button text with a 2px pixel drop."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Counters, field errors, the seen flag."
+      },
+      "lcd": {
+        "displayName": "LCD Glyph",
+        "purpose": "One character per LCD cell; 20px under 720px."
+      },
+      "lcd-input": {
+        "displayName": "LCD Input",
+        "purpose": "Message fields, previewing the device's letterforms."
+      }
+    },
+    "shadows": [
+      {
+        "name": "hud-lift",
+        "value": "inset 0 0 0 2px rgb(255 255 255 / 0.14), 0 10px 24px rgb(0 0 0 / 0.3)",
+        "purpose": "Every navy HUD panel."
+      },
+      {
+        "name": "stone-raised",
+        "value": "inset 2px 2px 0 rgb(255 255 255 / 0.42), inset -2px -3px 0 rgb(0 0 0 / 0.38)",
+        "purpose": "Stone buttons at rest and on hover."
+      },
+      {
+        "name": "stone-sunken",
+        "value": "inset 2px 3px 0 rgb(0 0 0 / 0.45), inset -2px -2px 0 rgb(255 255 255 / 0.18)",
+        "purpose": "Pressed and current-mood stone buttons."
+      },
+      {
+        "name": "label-drop",
+        "value": "text-shadow: 2px 2px 0 #3b3b3b",
+        "purpose": "Stone button labels only."
+      },
+      {
+        "name": "slap-lift",
+        "value": "inset 0 0 0 2px rgb(255 255 255 / 0.14), 0 22px 30px rgb(0 0 0 / 0.25)",
+        "purpose": "First keyframe of the mood panel's slap on mood change."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All HUD transitions and the slap."
+      },
+      {
+        "name": "hue-shift",
+        "value": "300ms",
+        "purpose": "Panel top band and mood name easing between mood hues."
+      },
+      {
+        "name": "slap",
+        "value": "420ms",
+        "purpose": "Mood panel lifts, tilts -1.5deg, scales 1.03 and settles on each mood change."
+      },
+      {
+        "name": "underline-fade",
+        "value": "200ms",
+        "purpose": "Current-mood underline on mood buttons."
+      },
+      {
+        "name": "blink",
+        "value": "1s steps(2, jump-none) infinite",
+        "purpose": "Seen flag blink, hard steps only."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "Stops every animation, transition, cloud drift and emote bounce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "720px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Stone Button",
+      "kind": "button",
+      "refersTo": "button-stone",
+      "description": "Every control: grey bevelled stone with pixel noise, blue-tinted hover, sunken pressed state.",
+      "html": "<button class=\"ds-btn-stone\">Settings</button>",
+      "css": ".ds-btn-stone { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:44px; padding:8px 18px; font:500 18px/1 'Pixelify Sans', system-ui, sans-serif; color:#f2f2f2; text-shadow:2px 2px 0 #3b3b3b; background:#6a6a6a var(--stone, repeating-conic-gradient(#707070 0 25%, #646464 0 50%) 0 0 / 4px 4px); image-rendering:pixelated; border:2px solid #0e0e0e; border-radius:0; box-shadow:inset 2px 2px 0 rgb(255 255 255 / 0.42), inset -2px -3px 0 rgb(0 0 0 / 0.38); cursor:pointer; } .ds-btn-stone:hover { background:#5c6494 var(--stone-hover, repeating-conic-gradient(#626a9a 0 25%, #565e8e 0 50%) 0 0 / 4px 4px); border-color:#f2f2f2; color:#ffffa0; } .ds-btn-stone:active, .ds-btn-stone[aria-pressed='true'] { background:#4f4f53 var(--stone-down, repeating-conic-gradient(#545458 0 25%, #4a4a4e 0 50%) 0 0 / 4px 4px); box-shadow:inset 2px 3px 0 rgb(0 0 0 / 0.45), inset -2px -2px 0 rgb(255 255 255 / 0.18); } .ds-btn-stone:focus-visible { outline:3px solid #ffffa0; outline-offset:2px; }"
+    },
+    {
+      "name": "Stone Button, Pressed",
+      "kind": "button",
+      "refersTo": "button-stone-pressed",
+      "description": "Pressed or current (aria-pressed) state: darker noise, sunken bevel.",
+      "html": "<button class=\"ds-btn-stone\" aria-pressed=\"true\">Save</button>",
+      "css": ".ds-btn-stone { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:44px; padding:8px 18px; font:500 18px/1 'Pixelify Sans', system-ui, sans-serif; color:#f2f2f2; text-shadow:2px 2px 0 #3b3b3b; background:#6a6a6a var(--stone, repeating-conic-gradient(#707070 0 25%, #646464 0 50%) 0 0 / 4px 4px); image-rendering:pixelated; border:2px solid #0e0e0e; border-radius:0; box-shadow:inset 2px 2px 0 rgb(255 255 255 / 0.42), inset -2px -3px 0 rgb(0 0 0 / 0.38); cursor:pointer; } .ds-btn-stone:hover { background:#5c6494 var(--stone-hover, repeating-conic-gradient(#626a9a 0 25%, #565e8e 0 50%) 0 0 / 4px 4px); border-color:#f2f2f2; color:#ffffa0; } .ds-btn-stone:active, .ds-btn-stone[aria-pressed='true'] { background:#4f4f53 var(--stone-down, repeating-conic-gradient(#545458 0 25%, #4a4a4e 0 50%) 0 0 / 4px 4px); box-shadow:inset 2px 3px 0 rgb(0 0 0 / 0.45), inset -2px -2px 0 rgb(255 255 255 / 0.18); } .ds-btn-stone:focus-visible { outline:3px solid #ffffa0; outline-offset:2px; }"
+    },
+    {
+      "name": "Stone Button, Disabled",
+      "kind": "button",
+      "refersTo": "button-stone-disabled",
+      "description": "Flat dead stone, no noise, no label shadow.",
+      "html": "<button class=\"ds-btn-stone-off\" disabled>Save</button>",
+      "css": ".ds-btn-stone-off { display:inline-flex; align-items:center; min-height:44px; padding:8px 18px; font:500 18px/1 'Pixelify Sans', system-ui, sans-serif; color:#a2a2a2; background:#333; border:2px solid #0e0e0e; border-radius:0; box-shadow:inset 2px 2px 0 rgb(255 255 255 / 0.06); cursor:not-allowed; }"
+    },
+    {
+      "name": "Mood Button",
+      "kind": "button",
+      "refersTo": "button-mood",
+      "description": "Mood button (in Settings) led by the critter face; the current mood is pressed with a 3px underline in its hue.",
+      "html": "<button class=\"ds-btn-stone ds-mood-btn\" aria-pressed=\"true\"><span class=\"ds-face\"></span>Done</button>",
+      "css": ".ds-btn-stone { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:44px; padding:8px 18px; font:500 18px/1 'Pixelify Sans', system-ui, sans-serif; color:#f2f2f2; text-shadow:2px 2px 0 #3b3b3b; background:#6a6a6a var(--stone, repeating-conic-gradient(#707070 0 25%, #646464 0 50%) 0 0 / 4px 4px); image-rendering:pixelated; border:2px solid #0e0e0e; border-radius:0; box-shadow:inset 2px 2px 0 rgb(255 255 255 / 0.42), inset -2px -3px 0 rgb(0 0 0 / 0.38); cursor:pointer; } .ds-btn-stone:hover { background:#5c6494 var(--stone-hover, repeating-conic-gradient(#626a9a 0 25%, #565e8e 0 50%) 0 0 / 4px 4px); border-color:#f2f2f2; color:#ffffa0; } .ds-btn-stone:active, .ds-btn-stone[aria-pressed='true'] { background:#4f4f53 var(--stone-down, repeating-conic-gradient(#545458 0 25%, #4a4a4e 0 50%) 0 0 / 4px 4px); box-shadow:inset 2px 3px 0 rgb(0 0 0 / 0.45), inset -2px -2px 0 rgb(255 255 255 / 0.18); } .ds-btn-stone:focus-visible { outline:3px solid #ffffa0; outline-offset:2px; } .ds-mood-btn { position:relative; justify-content:flex-start; padding:6px 12px; min-height:52px; min-width:170px; } .ds-face { width:36px; height:24px; flex:none; background:#d97757; box-shadow:inset 9px 6px 0 -6px #2a1712, inset -9px 6px 0 -6px #2a1712; } .ds-mood-btn::after { content:''; position:absolute; left:6px; right:6px; bottom:5px; height:3px; background:#7fe0a8; opacity:0; transition:opacity 200ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-mood-btn[aria-pressed='true']::after { opacity:1; }"
+    },
+    {
+      "name": "HUD Mood Panel",
+      "kind": "card",
+      "refersTo": "hud-panel",
+      "description": "Navy HUD panel with the current mood's hue as its top band, the mood name, timer and time-in-mood bar.",
+      "html": "<section class=\"ds-panel\"><p class=\"ds-mood\">Working</p><p class=\"ds-time\">Claude is thinking · 42s</p><div class=\"ds-bar\"><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></section>",
+      "css": ".ds-panel { --hue:#ffd66b; width:340px; background:#11152a; color:#f5f3ec; font:400 17px/1.35 'Pixelify Sans', system-ui, sans-serif; border:3px solid #0a0c1a; border-top:8px solid var(--hue); border-radius:0; box-shadow:inset 0 0 0 2px rgb(255 255 255 / 0.14), 0 10px 24px rgb(0 0 0 / 0.3); padding:16px 18px; } .ds-panel p { margin:0; } .ds-mood { font-size:38px; font-weight:700; line-height:1; color:var(--hue); } .ds-time { margin-top:6px; color:#c8cbe6; font-variant-numeric:tabular-nums; } .ds-bar { display:flex; gap:2px; margin-top:8px; } .ds-bar i { width:8px; height:6px; background:rgb(255 255 255 / 0.12); } .ds-bar i.on { background:var(--hue); }"
+    },
+    {
+      "name": "LCD Preview",
+      "kind": "custom",
+      "refersTo": "lcd-screen",
+      "description": "16-cell green character LCD mirroring the buddy's screen, VT323 glyphs.",
+      "html": "<div class=\"ds-lcd\"><div class=\"ds-cells\"><span>t</span><span>h</span><span>i</span><span>n</span><span>k</span><span>i</span><span>n</span><span>g</span><span>.</span><span>.</span><span>.</span><span>&nbsp;</span><span>&nbsp;</span><span>&nbsp;</span><span>&nbsp;</span><span>&nbsp;</span></div></div>",
+      "css": ".ds-lcd { width:340px; background:#142009; padding:8px; border:2px solid #050803; } .ds-cells { display:grid; grid-template-columns:repeat(16, 1fr); gap:2px; background:#9cc23f; padding:6px; } .ds-cells span { font:26px/1.05 'VT323', ui-monospace, monospace; text-align:center; color:#13200a; background:rgb(255 255 255 / 0.1); }"
+    },
+    {
+      "name": "LCD Message Input",
+      "kind": "input",
+      "refersTo": "input-lcd",
+      "description": "Black field in VT323 for one 16-character LCD line; white border on focus, pink on error.",
+      "html": "<div class=\"ds-field\"><input class=\"ds-input\" value=\"thinking...\" maxlength=\"16\"><span class=\"ds-count\">11/16</span></div>",
+      "css": ".ds-field { display:flex; align-items:center; gap:10px; background:#11152a; padding:12px; } .ds-input { width:240px; height:40px; padding:0 10px; font:24px/1 'VT323', ui-monospace, monospace; color:#e8e8e8; caret-color:#ffffa0; background:#000; border:2px solid #a0a0a0; border-radius:0; } .ds-input:focus { outline:none; border-color:#fff; } .ds-input:invalid, .ds-input[aria-invalid='true'] { border-color:#ff6b8e; } .ds-count { font:14px 'Pixelify Sans', system-ui, sans-serif; color:#c8cbe6; font-variant-numeric:tabular-nums; }"
+    },
+    {
+      "name": "Seen Flag",
+      "kind": "chip",
+      "refersTo": "seen-flag",
+      "description": "Blinking 'New' chip in the mood hue on DONE and NEEDS_YOU until seen.",
+      "html": "<span class=\"ds-flag\">New</span>",
+      "css": ".ds-flag { display:inline-block; background:#ff86b0; color:#14162a; font:700 14px/1.35 'Pixelify Sans', system-ui, sans-serif; padding:3px 8px; text-transform:uppercase; border-radius:0; animation:ds-blink 1s steps(2, jump-none) infinite; } @keyframes ds-blink { 50% { opacity:0.35; } } @media (prefers-reduced-motion: reduce) { .ds-flag { animation:none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Sticker on the Hillside",
+    "overview": "**Creative North Star: \"The Sticker on the Hillside\"**\n\nThe whole page is one pixel-art desktop-wallpaper landscape: a bright-green rolling hill under a dithered deep-blue sky with drifting pixel clouds, painted on a single low-resolution canvas (150 to 220 internal pixels tall) and scaled up crisp with no smoothing. On the hill crest walks the orange pixel critter, outlined with a one-pixel cream die-cut rim so it reads as a sticker slapped onto the scene. The critter's face and behaviour are the mood; the interface is secondary and stays small.\n\nThe UI floats on the landscape as dark navy game-HUD panels with a pixel typeface throughout, and every control is a grey bevelled stone button with a generated pixel-noise texture. Each mood owns exactly one full-strength hue, which appears as the panel's top band, the mood name, the time-in-mood bar and the pressed button's underline. Everything is square-cornered; depth comes from bevels, hard borders and one soft drop under the panels. The page never scrolls.\n\nThis is a homage world, not a copy: no Bliss photograph, no Minecraft textures or fonts, no OS window chrome. The landscape, the stone noise and the critter are all generated in code.",
+    "keyCharacteristics": [
+      "One full-bleed, low-res canvas scaled with `image-rendering: pixelated`; 4x4 Bayer dithering for every gradient.",
+      "The critter is the mood: face plus behaviour, never hue alone.",
+      "Dark navy HUD panels with a mood-hue top band.",
+      "Grey bevelled stone buttons with pixel noise; blue-tinted hover; sunken pressed state for the current mood.",
+      "Pixelify Sans for all UI text, VT323 only for LCD characters.",
+      "Zero radius everywhere."
+    ],
+    "rules": [
+      {
+        "name": "The One Hue Per Mood Rule",
+        "body": "Each mood owns exactly one full-strength hue, and only the current mood's hue is lit on the HUD. Never mix two mood hues in one element.",
+        "section": "colors"
+      },
+      {
+        "name": "The Face Before Hue Rule",
+        "body": "A mood is always shown by the critter's face (and on the scene, its behaviour) alongside its name; colour alone never carries a mood.",
+        "section": "colors"
+      },
+      {
+        "name": "The Orange Is Alive Rule",
+        "body": "Clay orange belongs to the critter. It is never a button, panel or text colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Screen Speaks VT323 Rule",
+        "body": "VT323 is used only for text that is, or previews, the buddy's LCD (cells, the message inputs, inline `code`). All other text is Pixelify Sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Bevel Not Offset Rule",
+        "body": "Hard-edged depth lives inside the stone (inset bevels and the 2px label drop). Panels never take a hard offset block shadow; their only outer shadow is the soft HUD lift.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** draw any new scenery on the same low-res canvas, with Bayer dithering for gradients and no image smoothing.",
+      "**Do** show every mood with the critter's face plus its name; use the mood hue only for the current mood.",
+      "**Do** build every control as a stone button: noise tile, 2px Stone Edge, raised bevel, blue-tinted hover, sunken pressed state.",
+      "**Do** put new panels on HUD Navy with the 3px edge, 2px inner rim and the soft HUD lift.",
+      "**Do** keep every corner square (0px).",
+      "**Do** use Signal Yellow (#ffffa0) as the single interaction highlight: hover labels, focus outlines, carets.",
+      "**Do** honour `prefers-reduced-motion` by stopping all animation and transitions."
+    ],
+    "donts": [
+      "**Don't** use the real Bliss photograph, Minecraft textures, sprites or fonts, or OS window chrome (title bars, close boxes). The world is generated, not borrowed.",
+      "**Don't** round corners or soften pixel edges.",
+      "**Don't** use clay orange for UI; it belongs to the critter.",
+      "**Don't** let colour alone tell moods apart.",
+      "**Don't** give panels a hard offset block shadow; hard depth lives inside the stone bevel.",
+      "**Don't** set any non-LCD text in VT323, or any LCD text in Pixelify Sans.",
+      "**Don't** let the page scroll; long content scrolls inside its panel."
+    ]
+  }
+}

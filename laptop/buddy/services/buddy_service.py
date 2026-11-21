@@ -6,14 +6,12 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
+from buddy.messages import LCD_WIDTH, MessageStore
 from buddy.state import BuddyState
 
 logger = logging.getLogger(__name__)
-
-# The LCD has 16 characters per row, so every message must fit in 16.
-LCD_WIDTH = 16
 
 
 # One level of nagging. frozen=True makes it read-only after creation.
@@ -39,15 +37,24 @@ MAX_REPEATS = 3
 
 
 class BuddyService:
-    def __init__(self, output, speaker, detector) -> None:
+    def __init__(self, output, speaker, detector, messages: MessageStore) -> None:
         # output:   anything with show(state, text)   (ConsoleOutput now, LCD later)
         # speaker:  anything with speak(text), stop() (Speaker)
         # detector: anything with is_distracted()     (AlwaysDistracted now, webcam later)
+        # messages: the LCD text for IDLE/WORKING/DONE/NEEDS_YOU, editable from the web page
         self._output = output
         self._speaker = speaker
         self._detector = detector
+        self._messages = messages
 
         self._state = BuddyState.IDLE
+        # The text currently on the LCD, so the web page can preview it.
+        self._text = messages.get(BuddyState.IDLE)
+        # Goes up by one on every state change, even DONE -> DONE, so the
+        # web page can tell "a new DONE happened" from "still the same DONE".
+        self._change_id = 0
+        # Who caused the last change: "hook", "nag" or "manual" (the web page).
+        self._source = "startup"
         # time.monotonic() is a clock that never jumps backwards
         # (unlike the wall clock when macOS syncs time), so it is the
         # right one for measuring "how many seconds since X".
@@ -67,16 +74,41 @@ class BuddyService:
         # You're back: stop nagging immediately, mid-sentence if needed.
         self._cancel_escalation()
         self._speaker.stop()
-        self._set_state(BuddyState.WORKING, "thinking...")
+        self._set_state(BuddyState.WORKING, self._messages.get(BuddyState.WORKING), "hook")
 
     def on_claude_finished(self, last_assistant_message: Optional[str]) -> None:
         self._last_assistant_message = last_assistant_message
-        self._set_state(BuddyState.DONE, "DONE. LOOK UP.")
+        self._set_state(BuddyState.DONE, self._messages.get(BuddyState.DONE), "hook")
         self._start_escalation()
 
     def on_needs_input(self) -> None:
-        self._set_state(BuddyState.NEEDS_YOU, "NEEDS YOU!")
+        self._set_state(BuddyState.NEEDS_YOU, self._messages.get(BuddyState.NEEDS_YOU), "hook")
         self._start_escalation()
+
+    # ---- Called by the web page ----
+
+    def set_mood(self, state: BuddyState) -> None:
+        # Only moods with an editable message can be set by hand; the nag
+        # moods (ANNOYED, YELLING) come from the timer only.
+        if state.value not in self._messages.all():
+            raise ValueError(f"{state.value} can only be reached by the nag timer")
+        # A hand-picked mood should stay put, so stop any nagging first.
+        self._cancel_escalation()
+        self._speaker.stop()
+        self._set_state(state, self._messages.get(state), "manual")
+
+    def get_messages(self) -> Dict[str, str]:
+        return self._messages.all()
+
+    def update_messages(self, changes: Dict[str, str]) -> Dict[str, str]:
+        result = self._messages.update(changes)
+        self._reshow_if_edited(changes)
+        return result
+
+    def reset_messages(self) -> Dict[str, str]:
+        result = self._messages.reset()
+        self._reshow_if_edited(result)
+        return result
 
     # ---- Called by the status route ----
 
@@ -85,7 +117,10 @@ class BuddyService:
         nagging = self._escalation_task is not None and not self._escalation_task.done()
         return {
             "state": self._state,
+            "text": self._text,
             "seconds_in_state": round(seconds_in_state, 1),
+            "change_id": self._change_id,
+            "source": self._source,
             "has_last_message": self._last_assistant_message is not None,
             "nagging": nagging,
         }
@@ -141,12 +176,22 @@ class BuddyService:
         if not self._detector.is_distracted():
             logger.info("Not distracted, skipping %s", step.state.value)
             return
-        self._set_state(step.state, step.lcd_text)
+        self._set_state(step.state, step.lcd_text, "nag")
         self._speaker.speak(step.spoken)
 
     # ---- Internal ----
 
-    def _set_state(self, new_state: BuddyState, text: str) -> None:
+    def _reshow_if_edited(self, changed: Dict[str, str]) -> None:
+        # If the message for the mood the buddy is in just changed, show the
+        # new text right away instead of on the next mood change.
+        if self._state.value in changed:
+            self._set_text(self._messages.get(self._state))
+
+    def _set_text(self, text: str) -> None:
+        self._text = text
+        self._output.show(self._state, text)
+
+    def _set_state(self, new_state: BuddyState, text: str, source: str) -> None:
         if len(text) > LCD_WIDTH:
             # Fail loudly during development instead of silently cutting
             # text off on the LCD.
@@ -155,5 +200,7 @@ class BuddyService:
         old_state = self._state
         self._state = new_state
         self._state_changed_at = time.monotonic()
-        logger.info("State %s -> %s", old_state.value, new_state.value)
-        self._output.show(new_state, text)
+        self._change_id += 1
+        self._source = source
+        logger.info("State %s -> %s (%s)", old_state.value, new_state.value, source)
+        self._set_text(text)
