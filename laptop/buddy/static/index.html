@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Buddy</title>
+  <link rel="icon" id="favicon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/critter.js" defer></script>
+  <script src="/static/scene.js" defer></script>
+  <script src="/static/stats.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body data-mood="IDLE">
+  <canvas id="scene" aria-hidden="true"></canvas>
+
+  <main class="hud">
+    <section class="panel mood-panel" aria-labelledby="mood-heading">
+      <h1 class="visually-hidden">Claude Buddy</h1>
+      <div class="mood-line">
+        <canvas class="face" id="mood-face" width="18" height="12" aria-hidden="true"></canvas>
+        <div>
+          <p class="mood-name" id="mood-heading" aria-live="polite">Waking up…</p>
+          <p class="mood-time" id="mood-time">connecting to the buddy</p>
+          <div class="time-bar" id="time-bar" aria-hidden="true"></div>
+        </div>
+        <span class="new-tag" id="new-tag" hidden>New</span>
+      </div>
+      <div class="lcd" aria-label="Buddy's screen" role="img" id="lcd">
+        <div class="lcd-cells" id="lcd-cells"></div>
+      </div>
+      <p class="offline" id="offline" hidden>
+        Can't reach the buddy service. Is it still running? Start it from
+        <code>laptop/</code> with <code>uvicorn buddy.main:app --port 8765</code>.
+      </p>
+    </section>
+
+    <div class="top-actions">
+      <button class="stone-btn" id="stats-toggle" aria-expanded="false" aria-controls="stats-panel">
+        <svg class="icon" viewBox="0 0 11 11" aria-hidden="true" shape-rendering="crispEdges">
+          <path d="M1 6h2v4h-2zM4.5 2h2v8h-2zM8 4h2v6h-2zM0 10h11v1h-11z" fill="currentColor"/>
+        </svg>
+        Stats
+      </button>
+      <button class="stone-btn" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">
+        <svg class="icon" viewBox="0 0 11 11" aria-hidden="true" shape-rendering="crispEdges">
+          <path d="M4 0h3v1h-3zM1 1h2v1h-2zM4 1h3v1h-3zM8 1h2v1h-2zM1 2h9v1h-9zM2 3h7v1h-7zM0 4h4v1h-4zM7 4h4v1h-4zM0 5h4v1h-4zM7 5h4v1h-4zM0 6h4v1h-4zM7 6h4v1h-4zM2 7h7v1h-7zM1 8h9v1h-9zM1 9h2v1h-2zM4 9h3v1h-3zM8 9h2v1h-2zM4 10h3v1h-3z" fill="currentColor"/>
+        </svg>
+        Settings
+      </button>
+    </div>
+
+    <section class="panel side-panel stats-panel" id="stats-panel" aria-labelledby="stats-heading" hidden>
+      <div class="panel-head">
+        <h2 id="stats-heading">Stats <span class="sc-sample" title="Real numbers arrive once the buddy keeps a daily log">Sample</span></h2>
+        <button type="button" class="stone-btn" id="stats-close">Close</button>
+      </div>
+      <div class="sc-range" role="group" aria-label="Time range">
+        <button type="button" class="stone-btn" data-range="week">Week</button>
+        <button type="button" class="stone-btn" data-range="day">Today</button>
+      </div>
+      <div class="sc-body" id="stats-body"></div>
+    </section>
+
+    <section class="panel side-panel" id="settings-panel" aria-labelledby="settings-heading" hidden>
+      <div class="panel-head">
+        <h2 id="settings-heading">Settings</h2>
+        <button type="button" class="stone-btn" id="close-btn">Close</button>
+      </div>
+
+      <section class="settings-section" aria-labelledby="color-heading">
+        <h3 id="color-heading">Claude's color</h3>
+        <div class="swatches" id="swatches" role="group" aria-labelledby="color-heading">
+          <button type="button" class="swatch swatch-custom" id="color-more" title="Any color"
+            aria-label="Any color" aria-expanded="false" aria-controls="wheel-box"></button>
+        </div>
+        <div class="wheel-box" id="wheel-box" hidden>
+          <canvas class="wheel" id="wheel" width="41" height="41" tabindex="0" role="slider"
+            aria-label="Claude's color wheel. Left and right change the hue, up and down the strength."
+            aria-valuemin="0" aria-valuemax="360"></canvas>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="mood-set-heading">
+        <h3 id="mood-set-heading">Claude's mood</h3>
+        <p class="hint">Claude Code sets this on its own. Pick one to test the puppet.</p>
+        <div class="mood-buttons" id="mood-buttons" role="group" aria-labelledby="mood-set-heading"></div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="messages-heading">
+        <h3 id="messages-heading">Screen messages</h3>
+        <p class="hint">What the puppet's screen says in each mood. Up to 16 plain characters.</p>
+        <form id="messages-form" novalidate>
+          <div class="msg-rows" id="msg-rows"></div>
+          <p class="form-status" id="form-status" role="status"></p>
+          <div class="form-actions">
+            <button type="submit" class="stone-btn" id="save-btn">Save messages</button>
+            <button type="button" class="stone-btn" id="reset-btn">Reset to defaults</button>
+          </div>
+        </form>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
