@@ -59,17 +59,20 @@ REDO_ALLOWED_STATES = (BuddyState.DONE, BuddyState.ANNOYED, BuddyState.YELLING)
 
 
 class BuddyService:
-    def __init__(self, output, speaker, detector, claude_input, messages: MessageStore) -> None:
+    def __init__(self, output, speaker, detector, claude_input, messages: MessageStore,
+                 focuser) -> None:
         # output:       anything with show(state, text)   (SerialOutput or ConsoleOutput)
         # speaker:      anything with speak(text), stop() (Speaker)
         # detector:     anything with is_distracted()     (AttentionDetector, or AlwaysDistracted)
         # claude_input: anything with async send(text)    (TmuxTyper)
         # messages:     the LCD text for IDLE/WORKING/DONE/NEEDS_YOU, editable from the web page
+        # focuser:      anything with focus() -> bool     (WindowFocuser)
         self._output = output
         self._speaker = speaker
         self._detector = detector
         self._claude_input = claude_input
         self._messages = messages
+        self._focuser = focuser
 
         self._state = BuddyState.IDLE
         # The text currently on the LCD, so the web page can preview it.
@@ -145,6 +148,16 @@ class BuddyService:
             self._set_state(BuddyState.DONE, "REDO FAILED", "button")
             return "failed: could not type into tmux session 'claude' (see server log)"
         return "sent"
+
+    # ---- Called by the slap route and the STM32 serial reader ----
+
+    async def on_slap(self) -> str:
+        # Someone slapped the buddy's head: bring Claude Code back in front.
+        # Works in every state and does not change the state or the face
+        # (the board already showed "> <" on its own).
+        if self._focuser.focus():
+            return "focused"
+        return "failed: could not bring the Claude Code app to the front (see server log)"
 
     # ---- Called by the web page ----
 

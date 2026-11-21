@@ -17,3 +17,10 @@ async def press_button(service: BuddyService = Depends(get_buddy_service)) -> di
     # curl output whether the press did anything and why not.
     result = await service.on_button_pressed()
     return {"result": result}
+
+
+@router.post("/slap")
+async def slap(service: BuddyService = Depends(get_buddy_service)) -> dict:
+    # Fake a slap on the head without the board: brings Claude Code to the front.
+    result = await service.on_slap()
+    return {"result": result}

@@ -12,6 +12,7 @@
 #include "face.h"
 #include "main.h"
 #include "usart.h"
+#include <stdio.h>
 #include <string.h>
 
 #define RX_RING_SIZE 128             /* bytes buffered between interrupt and main loop */
@@ -83,6 +84,19 @@ void Link_Poll(void)
 void Link_SendButton(void)
 {
   send_text("BTN\n");
+}
+
+void Link_SendSlap(uint16_t strength_mg)
+{
+  char msg[16];                                      /* "SLAP:65535\n" fits      */
+  snprintf(msg, sizeof msg, "SLAP:%u\n", (unsigned)strength_mg);
+  send_text(msg);
+}
+
+void Link_SendLine(const char *text)
+{
+  send_text(text);
+  send_text("\n");
 }
 
 /* ---- HAL callbacks (these replace the empty "weak" versions in the HAL) ---- */
