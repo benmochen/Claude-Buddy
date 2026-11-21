@@ -20,22 +20,40 @@ class EscalationStep:
     after_seconds: int   # seconds after the camera decided you're not looking
     state: BuddyState    # mood to switch to
     lcd_text: str        # row 2 of the LCD (max 16 chars)
-    spoken: str          # what the laptop says out loud
+    sound: str           # voice line to play: buddy/sounds/<sound>.mp3
 
 
 # Tune these numbers for the demo. Shorter = funnier on stage.
 # The camera already waits 2 s of not looking before saying "distracted",
-# so step 0 fires right away at that point.
+# so step 0 fires right away at that point. The clips are 2 to 5 s long,
+# so 8 s apart leaves a short silence between lines. A step also waits
+# for the previous line to finish, so lines never cut each other off.
+
+# After Claude finished (DONE): proud, then disappointed, then fed up.
 ESCALATION_STEPS = [
-    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.",
-                   "Hey. Claude is done. Look at the screen."),
-    EscalationStep(8, BuddyState.YELLING, "LOOK AT ME!!!",
-                   "Claude finished ages ago. Get off your phone!"),
+    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.", "done"),       # "I finished. You're welcome, I guess."
+    EscalationStep(8, BuddyState.ANNOYED, "HEY. LOOK UP.", "annoyed"),    # "You're on your phone. That's fine."
+    EscalationStep(16, BuddyState.ANNOYED, "HEY. LOOK UP.", "annoyed2"),  # "I wrote four hundred lines for you."
+    EscalationStep(24, BuddyState.YELLING, "LOOK AT ME!!!", "yelling"),   # "Okay, seriously? Put the phone down."
 ]
-# After the last step, repeat it this often, this many times, then go
-# quiet (so it doesn't yell forever if you actually left the room).
-REPEAT_EVERY_SECONDS = 15
+
+# While Claude waits on a permission prompt (NEEDS_YOU). The "I finished"
+# lines would make no sense here, so it goes straight to the yelling ones.
+NEEDS_YOU_STEPS = [
+    EscalationStep(0, BuddyState.ANNOYED, "HEY. LOOK UP.", "yelling2"),   # "Hello? I'm right here!"
+    EscalationStep(8, BuddyState.YELLING, "LOOK AT ME!!!", "yelling"),
+]
+
+# After the last step, repeat these lines in turn this often, this many
+# times, then go quiet (so it doesn't yell forever if you left the room).
+REPEAT_SOUNDS = ["yelling2", "yelling"]
+REPEAT_EVERY_SECONDS = 12
 MAX_REPEATS = 3
+
+# One-off reactions.
+SOUND_FINISHED = "yay"      # Claude just finished: "Done. And honestly? It's pretty good."
+SOUND_LOOKED_BACK = "thanks"  # you looked back while it was nagging
+SOUND_SLAM = "slam"         # the redo button: "Ow. Okay. I'll do it again."
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
@@ -61,7 +79,7 @@ REDO_ALLOWED_STATES = (BuddyState.DONE, BuddyState.ANNOYED, BuddyState.YELLING)
 class BuddyService:
     def __init__(self, output, speaker, detector, claude_input, messages: MessageStore) -> None:
         # output:       anything with show(state, text)   (SerialOutput or ConsoleOutput)
-        # speaker:      anything with speak(text), stop() (Speaker)
+        # speaker:      anything with play(name), stop(), is_busy(), current_sound() (Speaker)
         # detector:     anything with is_distracted()     (AttentionDetector, or AlwaysDistracted)
         # claude_input: anything with async send(text)    (TmuxTyper)
         # messages:     the LCD text for IDLE/WORKING/DONE/NEEDS_YOU, editable from the web page
@@ -104,13 +122,17 @@ class BuddyService:
     def on_prompt_submitted(self) -> None:
         # You're back: stop watching and nagging immediately, mid-sentence if needed.
         self._stop_watching()
-        self._speaker.stop()
+        # Exception: the slam reaction. The redo button types a prompt, which
+        # fires this hook half a second later; that must not cut off "Ow".
+        if self._speaker.current_sound() != SOUND_SLAM:
+            self._speaker.stop()
         self._set_state(BuddyState.WORKING, self._messages.get(BuddyState.WORKING), "hook")
 
     def on_claude_finished(self, last_assistant_message: Optional[str]) -> None:
         self._last_assistant_message = last_assistant_message
         text = self._messages.get(BuddyState.DONE)
         self._set_state(BuddyState.DONE, text, "hook")
+        self._speaker.play(SOUND_FINISHED)
         self._start_watching(BuddyState.DONE)
 
     def on_needs_input(self) -> None:
@@ -134,7 +156,8 @@ class BuddyService:
         # half a second, and a second press during that time now sees
         # WORKING and is ignored, so Claude never gets the message twice.
         self._stop_watching()
-        self._speaker.stop()
+        # play() cuts off any nag line first, then says "Ow. Okay. I'll do it again."
+        self._speaker.play(SOUND_SLAM)
         self._set_state(BuddyState.WORKING, "redoing...", "button")
 
         # Type the message into Claude Code. When Claude receives it, the
@@ -213,6 +236,11 @@ class BuddyService:
     async def _watch(self, waiting_state: BuddyState) -> None:
         # waiting_state: what to go back to when you look at the screen again
         # (DONE or NEEDS_YOU, shown with its message from the web page).
+        # Each waiting state has its own lines.
+        if waiting_state == BuddyState.NEEDS_YOU:
+            steps = NEEDS_YOU_STEPS
+        else:
+            steps = ESCALATION_STEPS
         try:
             nag_started_at = 0.0   # when the current nagging stretch began
             last_nag_at = 0.0      # when we last spoke
@@ -227,30 +255,40 @@ class BuddyService:
                     # Looking at the screen. If we were nagging, calm down.
                     if self._nagging:
                         logger.info("Looking at the screen again, calming down")
-                        self._speaker.stop()
+                        # play() cuts off the nag line, then says "Thank you."
+                        self._speaker.play(SOUND_LOOKED_BACK)
                         self._set_state(waiting_state, self._messages.get(waiting_state), "nag")
                         self._nagging = False
                     continue
 
-                # Not looking. If this is the start of a new stretch, reset
-                # the escalation so it begins again from step 0.
+                # Not looking. Wait while a line is still playing (for example
+                # "yay" right after Claude finished), so lines never cut each
+                # other off. The next check is 0.25 s later.
+                if self._speaker.is_busy():
+                    continue
+
+                # If this is the start of a new stretch, reset the escalation
+                # so it begins again from step 0.
                 if not self._nagging:
                     self._nagging = True
                     nag_started_at = now
                     next_step = 0
                     repeats_done = 0
 
-                if next_step < len(ESCALATION_STEPS):
-                    # Still working through the steps (ANNOYED, then YELLING).
-                    step = ESCALATION_STEPS[next_step]
+                if next_step < len(steps):
+                    # Still working through the steps.
+                    step = steps[next_step]
                     if now - nag_started_at >= step.after_seconds:
                         self._nag(step)
                         last_nag_at = now
                         next_step += 1
                 elif repeats_done < MAX_REPEATS:
-                    # All steps done: repeat the last one every REPEAT_EVERY_SECONDS.
+                    # All steps done: every REPEAT_EVERY_SECONDS, show the last
+                    # step's mood again with the next line from REPEAT_SOUNDS.
                     if now - last_nag_at >= REPEAT_EVERY_SECONDS:
-                        self._nag(ESCALATION_STEPS[-1])
+                        last_step = steps[-1]
+                        sound = REPEAT_SOUNDS[repeats_done % len(REPEAT_SOUNDS)]
+                        self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, sound))
                         last_nag_at = now
                         repeats_done += 1
                         if repeats_done == MAX_REPEATS:
@@ -269,7 +307,7 @@ class BuddyService:
 
     def _nag(self, step: EscalationStep) -> None:
         self._set_state(step.state, step.lcd_text, "nag")
-        self._speaker.speak(step.spoken)
+        self._speaker.play(step.sound)
 
     # ---- Internal ----
 

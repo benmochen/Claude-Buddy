@@ -9,7 +9,7 @@ speaker and shows an angry face on a 2.8" TFT display. A big "slam" button sends
 
 Claude Code hooks (HTTP) -> FastAPI daemon on the Mac -> (USB serial) -> STM32 -> TFT face
 STM32 button -> (USB serial "BTN") -> daemon -> `tmux send-keys` -> Claude Code
-Daemon -> macOS `say` -> headphone jack -> speaker
+Daemon -> `afplay` voice clips (laptop/buddy/sounds/*.mp3) -> headphone jack -> speaker in the toy
 Webcam -> MediaPipe (head angle + eyes) -> daemon decides "looking at the screen or not"
 
 Everything smart runs on the laptop. The STM32 only draws the face and reports
@@ -37,7 +37,12 @@ button presses.
   - `buddy/outputs/serial_output.py`: sends `F:`/`T:` lines to the STM32 (pyserial, auto-finds
     `/dev/cu.usbmodem*`), also prints like ConsoleOutput; reader thread turns `BTN` into
     `on_button_pressed()` via `asyncio.run_coroutine_threadsafe` (wired in main.py lifespan)
-  - `buddy/outputs/speaker.py`: macOS `say` via subprocess.Popen (list args, no shell)
+  - `buddy/outputs/speaker.py`: play(name) runs `afplay sounds/<name>.mp3` via subprocess.Popen
+    (list args, no shell), cutting off the previous clip; is_busy(), current_sound(), stop().
+    speak(text) (macOS `say`) kept as a fallback, unused.
+  - `buddy/sounds/*.mp3`: voice lines made with ElevenLabs (free plan: non-commercial use,
+    credit "Voice: ElevenLabs"). Custom voice "Claude Buddy": deadpan, tired, passive-aggressive,
+    young adult American man. yay, done, annoyed, annoyed2, yelling, yelling2, thanks, slam.
   - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
   - `buddy/detectors/attention_detector.py`: webcam + MediaPipe Face Landmarker in a
     background thread (15 fps). Not looking = head down > 10 deg vs calibrated working
@@ -55,7 +60,7 @@ button presses.
 ## Running it (user's Mac, project at ~/Documents/desk-buddy)
 
 - Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --port 8765`
-  Env vars in front: `BUDDY_QUIET=1` prints `[SAY] ...` instead of speaking;
+  Env vars in front: `BUDDY_QUIET=1` prints `[PLAY] <file>` instead of playing sounds;
   `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1;
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port.
   Plug the board in BEFORE starting the server (the port is only looked for at startup).
@@ -75,17 +80,22 @@ button presses.
 - LCD text per mood comes from the message store (editable on the mood page, saved to
   ~/.config/claude-buddy/messages.json). Defaults: IDLE "zzz", WORKING "...", DONE "Done",
   NEEDS_YOU "!!!". ANNOYED/YELLING use the fixed lines in ESCALATION_STEPS.
-- Prompt submitted -> WORKING, stops the watch loop, cuts off speech.
+- Prompt submitted -> WORKING, stops the watch loop, cuts off the current clip (except `slam`,
+  so the redo prompt the button types doesn't cut off its own "Ow").
+- Stop hook also plays `yay` ("Done. And honestly? It's pretty good.").
   The camera is ignored while Claude works.
 - Stop hook -> DONE, starts the watch loop
 - Notification (permission_prompt) -> NEEDS_YOU, starts the watch loop
-- Watch loop (asyncio task, checks detector every 0.25 s): distracted -> ANNOYED + speech
-  at once, YELLING + speech 8 s later, repeat every 15 s, max 3, then quiet. Looking
-  back -> stop speech, return to DONE / NEEDS_YOU. Looking away again restarts from ANNOYED.
+- Watch loop (asyncio task, checks detector every 0.25 s). Never starts a line while one is
+  playing. After DONE, when distracted: ANNOYED `done` (0 s), `annoyed` (8 s), `annoyed2` (16 s),
+  YELLING `yelling` (24 s), then `yelling2`/`yelling` alternating every 12 s, max 3, then quiet.
+  After NEEDS_YOU: `yelling2` (0 s), `yelling` (8 s), same repeats (the "I finished" lines don't
+  fit a permission prompt). Looking back while nagging -> `thanks`, return to DONE / NEEDS_YOU.
+  Looking away again restarts from the first step. Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS.
 - Button (POST /button, or `BTN` from the STM32): only in DONE, ANNOYED, YELLING, and never
   while the watch loop is waiting on NEEDS_YOU (not WORKING: message would
   queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
-  nag, stops speech, sets WORKING "redoing..." BEFORE typing so a double press is
+  nag, plays `slam` ("Ow. Okay. I'll do it again."), sets WORKING "redoing..." BEFORE typing so a double press is
   ignored, then types REDO_MESSAGE. tmux failure -> DONE "REDO FAILED".
 - Mood page (POST /mood): sets IDLE/WORKING/DONE/NEEDS_YOU by hand (source "manual"),
   stops the watch loop. ANNOYED/YELLING are refused (422), only the watch loop sets them.
@@ -99,7 +109,12 @@ button presses.
   uvicorn listens on IPv4 only.
 - Removed the `idle_prompt` Notification matcher: it fires while the user is idle
   after Stop, which would reset the nag timer mid-yell. Stop already covers it.
-- Speaker is on the laptop (macOS `say`), not the STM32 DAC: far less work, better audio.
+- Speaker is on the laptop (`afplay`), cable run into the toy, not the STM32 DAC: far less work,
+  better audio. DAC option was explored (Nov 21): DAC1_OUT1 = PA4 = D7 (would need TFT DC moved to
+  D4/PA3 in wiring AND CubeMX; firmware still uses D7/PA4 for DC), screw-terminal 3.5 mm jack via 10 uF cap, clips
+  stored in flash at 8 kHz 8-bit, TIM6 + DMA. Parked by Ben.
+- Pre-made voice clips instead of live TTS: no internet or credits needed during the demo, and
+  ElevenLabs acting (deadpan -> exasperated) is far better than `say`.
 - Redo button injects text with `tmux send-keys` because hooks cannot start a new turn.
   Claude Code must be started inside tmux: `tmux new -s claude` then `claude`.
 - Port 8765 to avoid clashing with other FastAPI apps on 8000.
