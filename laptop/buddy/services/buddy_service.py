@@ -55,6 +55,7 @@ MAX_REPEATS = 3
 SOUND_FINISHED = "yay"      # Claude just finished: "Done. And honestly? It's pretty good."
 SOUND_LOOKED_BACK = "thanks"  # you looked back while it was nagging
 SOUND_SLAM = "slam"         # the redo button: "Ow. Okay. I'll do it again."
+SOUND_UNDO = "undo"         # a head slap that undid Claude's last turn
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
@@ -210,10 +211,11 @@ class BuddyService:
 
         # You're clearly at the desk: stop nagging before touching files.
         self._stop_watching()
-        self._speaker.stop()
         restored = self._checkpoint.undo()
         self._set_state(BuddyState.DONE, f"undid {restored} files"[:LCD_WIDTH], "slap")
-        self._speaker.speak(f"Undid {restored} files.")
+        # play() cuts off any nag line first. The number of files is shown on
+        # the screen and in the reply, the voice line is the same every time.
+        self._speaker.play(SOUND_UNDO)
         return f"undid {restored} of {count} files"
 
     # ---- Called by the web page ----

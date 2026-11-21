@@ -43,10 +43,10 @@ button presses.
     `on_button_pressed()` via `asyncio.run_coroutine_threadsafe` (wired in main.py lifespan)
   - `buddy/outputs/speaker.py`: play(name) runs `afplay sounds/<name>.mp3` via subprocess.Popen
     (list args, no shell), cutting off the previous clip; is_busy(), current_sound(), stop().
-    speak(text) (macOS `say`) is still used by the slap/undo lines ("Undid N files.").
+    speak(text) (macOS `say`) only for "Nothing to undo." (no clip recorded for it).
   - `buddy/sounds/*.mp3`: voice lines made with ElevenLabs (free plan: non-commercial use,
     credit "Voice: ElevenLabs"). Custom voice "Claude Buddy": deadpan, tired, passive-aggressive,
-    young adult American man. yay, done, annoyed, annoyed2, yelling, yelling2, thanks, slam.
+    young adult American man. yay, done, annoyed, annoyed2, yelling, yelling2, thanks, slam, undo.
   - `buddy/outputs/window_focuser.py`: `lsappinfo` tells which app is in front; `open -b <id>`
     brings the Claude Code app to the front (BUDDY_CLAUDE_APP_ID, default com.microsoft.VSCode)
   - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
