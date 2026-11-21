@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "http", "url": "http://127.0.0.1:8765/hooks/prompt-submit", "timeout": 2 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "http", "url": "http://127.0.0.1:8765/hooks/stop", "timeout": 2 }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          { "type": "http", "url": "http://127.0.0.1:8765/hooks/notification", "timeout": 2 }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          { "type": "http", "url": "http://127.0.0.1:8765/hooks/notification", "timeout": 2 }
+        ]
+      }
+    ]
+  }
+}
