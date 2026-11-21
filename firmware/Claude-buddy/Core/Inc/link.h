@@ -11,11 +11,14 @@
  *   F:MAD    face ouch > <    (you ignored it, nagging)
  *   T:<text> status text, accepted but not shown yet (no text on the TFT)
  *   PING     board answers PONG (for testing the cable and port)
+ *   S:<name> play voice clip <name> (yay, done, beep, ...) through the DAC on D7
+ *   S:STOP   stop the voice clip
  *
  * Board -> laptop:
  *   BTN      the big undo button was pressed
  *   SLAP:<n> the head was slapped, n = strength in milli-g (1000 = 1 g)
  *   ERR:ACCEL the accelerometer did not answer at startup (no slaps)
+ *   ERR:SOUND an S:<name> asked for a clip that isn't in audio_clips.c
  *   PONG     answer to PING
  */
 #ifndef LINK_H

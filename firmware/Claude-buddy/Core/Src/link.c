@@ -9,6 +9,7 @@
  *      collected into a line. A full line is then acted on.
  */
 #include "link.h"
+#include "audio.h"
 #include "face.h"
 #include "main.h"
 #include "usart.h"
@@ -48,6 +49,12 @@ static void handle_line(const char *msg)
   else if (strcmp(msg, "F:NEED") == 0)  Face_SetMood(FACE_SAD);     /* needs permission    */
   else if (strcmp(msg, "F:MAD") == 0)   Face_SetMood(FACE_OUCH);    /* nagging             */
   else if (strcmp(msg, "PING") == 0)    send_text("PONG\n");        /* connection test     */
+  else if (strcmp(msg, "S:STOP") == 0)  Audio_Stop();               /* cut the voice off   */
+  else if (strncmp(msg, "S:", 2) == 0) {                            /* S:<name> plays a clip */
+    if (!Audio_Play(msg + 2)) {
+      send_text("ERR:SOUND\n");          /* no clip with that name: laptop logs it */
+    }
+  }
   /* "T:<text>" and anything else: nothing to show on the TFT yet, ignore. */
 }
 

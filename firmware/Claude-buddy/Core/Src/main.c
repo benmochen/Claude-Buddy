@@ -30,6 +30,7 @@
 #include "face.h"
 #include "link.h"
 #include "accel.h"
+#include "audio.h"
 
 /* USER CODE END Includes */
 
@@ -134,6 +135,8 @@ int main(void)
   if (!Accel_Init()) {               /* accelerometer for slap detection */
     Link_SendLine("ERR:ACCEL");      /* laptop logs a warning; everything else still works */
   }
+  Audio_Init();                      /* DAC on PA4 (D7) -> capacitor -> speaker jack */
+  Audio_Play("beep");                /* short beep at every start: proves the speaker wiring */
 
   /* USER CODE END 2 */
 

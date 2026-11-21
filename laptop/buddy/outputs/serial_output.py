@@ -100,6 +100,15 @@ class SerialOutput:
         self._send(FACE_FOR_STATE[state])
         self._send("T:" + text)
 
+    def is_connected(self) -> bool:
+        # True while the board's serial port is open. Used by the Speaker to
+        # decide between the toy's speaker and the laptop's.
+        return self._serial is not None
+
+    def send_line(self, line: str) -> None:
+        # Send one protocol line, for example "S:yay" (play a voice clip).
+        self._send(line)
+
     def _send(self, line: str) -> None:
         with self._lock:
             if self._serial is None:

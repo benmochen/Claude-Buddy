@@ -46,6 +46,16 @@ if _no_serial:
 else:
     _output = SerialOutput(port=os.environ.get("BUDDY_SERIAL"))
 
+# Where the voice comes out. By default the toy's own speaker when the board
+# is connected (the board plays its copy of the clip), else the laptop.
+# BUDDY_AUDIO=laptop always uses the laptop (afplay), for example if the
+# board's audio wiring fails during the demo.
+_laptop_audio_only = os.environ.get("BUDDY_AUDIO") == "laptop"
+if _no_serial or _laptop_audio_only:
+    _speaker_board = None
+else:
+    _speaker_board = _output
+
 if _no_camera:
     _detector = AlwaysDistracted()
 else:
@@ -58,7 +68,7 @@ else:
 # one, because the buddy's state lives inside it.
 _buddy_service = BuddyService(
     output=_output,
-    speaker=Speaker(quiet=_quiet),
+    speaker=Speaker(quiet=_quiet, board=_speaker_board),
     detector=_detector,
     # "claude" must match the name in `tmux new -s claude`.
     claude_input=TmuxTyper(session="claude"),
