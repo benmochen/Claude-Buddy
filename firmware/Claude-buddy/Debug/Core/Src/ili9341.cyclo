@@ -1,0 +1,10 @@
+../Core/Src/ili9341.c:24:13:spi_write	1
+../Core/Src/ili9341.c:29:13:write_cmd	2
+../Core/Src/ili9341.c:45:6:TFT_Init	1
+../Core/Src/ili9341.c:82:13:set_window	1
+../Core/Src/ili9341.c:90:6:TFT_FillRect	9
+../Core/Src/ili9341.c:115:6:TFT_DrawImage	7
+../Core/Src/ili9341.c:129:6:TFT_FillScreen	1
+../Core/Src/ili9341.c:136:16:read_reg8	1
+../Core/Src/ili9341.c:150:6:TFT_SetBacklight	3
+../Core/Src/ili9341.c:162:10:TFT_ReadID	1

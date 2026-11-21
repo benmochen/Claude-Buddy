@@ -1066,6 +1066,12 @@
           <name>$PROJ_DIR$/../Core/Src/gpio.c</name>
         </file>
         <file>
+          <name>$PROJ_DIR$/../Core/Src/lcd1602.c</name>
+        </file>
+        <file>
+          <name>$PROJ_DIR$/../Core/Src/face.c</name>
+        </file>
+        <file>
           <name>$PROJ_DIR$/../Core/Src/i2c.c</name>
         </file>
         <file>
