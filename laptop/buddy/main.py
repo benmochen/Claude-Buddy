@@ -1,12 +1,13 @@
 # Entry point. uvicorn loads the `app` object from this file.
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from buddy.api import button, camera, hooks, status
-from buddy.dependencies import get_detector
+from buddy.dependencies import get_buddy_service, get_detector, get_output
 
 # INFO shows state changes. Change to logging.DEBUG to also see which
 # fields each hook sent (names only, never values).
@@ -21,9 +22,34 @@ async def lifespan(app: FastAPI):
     # camera permission popup. Calibration starts as soon as it sees a face,
     # so look at the screen while the server starts.
     get_detector().start()
+
+    # The serial reader runs in its own thread, but on_button_pressed() is an
+    # async method that must run on FastAPI's event loop. run_coroutine_threadsafe
+    # hands it over from the thread to the loop.
+    loop = asyncio.get_running_loop()
+
+    def on_board_button() -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            get_buddy_service().on_button_pressed(), loop
+        )
+        # Log the result ("sent", "ignored: ...") once it finishes.
+        future.add_done_callback(_log_button_result)
+
+    # Opens the STM32's serial port (if plugged in) and starts listening for BTN.
+    get_output().start(on_button=on_board_button)
     yield
+    # Closes the serial port.
+    get_output().stop()
     # Closes the webcam so its light turns off.
     get_detector().stop()
+
+
+def _log_button_result(future) -> None:
+    # Runs when the button press has been handled.
+    try:
+        logging.getLogger(__name__).info("STM32 button: %s", future.result())
+    except Exception:
+        logging.getLogger(__name__).exception("STM32 button press failed")
 
 
 app = FastAPI(title="Desk buddy", lifespan=lifespan)

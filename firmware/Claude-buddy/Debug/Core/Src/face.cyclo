@@ -6,8 +6,8 @@
 ../Core/Src/face.c:135:13:draw_eye	4
 ../Core/Src/face.c:146:16:blink_height	7
 ../Core/Src/face.c:163:13:enter_mood	1
-../Core/Src/face.c:173:6:Face_SetMood	1
-../Core/Src/face.c:180:6:Face_React	2
-../Core/Src/face.c:188:10:Face_GetMood	1
-../Core/Src/face.c:190:6:Face_Init	2
-../Core/Src/face.c:201:6:Face_Update	16
+../Core/Src/face.c:173:6:Face_SetMood	2
+../Core/Src/face.c:181:6:Face_React	2
+../Core/Src/face.c:189:10:Face_GetMood	1
+../Core/Src/face.c:191:6:Face_Init	2
+../Core/Src/face.c:202:6:Face_Update	16
