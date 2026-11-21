@@ -26,9 +26,11 @@ button presses.
     output / speaker / detector. Only file to edit when swapping implementations.
   - `buddy/api/hooks.py`: POST /hooks/prompt-submit, /hooks/stop, /hooks/notification (reply 204)
   - `buddy/api/status.py`: GET /status
+  - `buddy/api/button.py`: POST /button (redo button; curl now, STM32 later). Replies {"result": ...}
   - `buddy/services/buddy_service.py`: all logic, including the nag timer
   - `buddy/outputs/console_output.py`: prints state (stand-in for the LCD)
   - `buddy/outputs/speaker.py`: macOS `say` via subprocess.Popen (list args, no shell)
+  - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
   - `buddy/detectors/always_distracted.py`: stub, always returns True
 - `firmware/`: empty, the STM32CubeIDE project goes here
 
@@ -36,9 +38,12 @@ button presses.
 
 - Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --port 8765`
   (prefix `BUDDY_QUIET=1` to print `[SAY] ...` instead of speaking)
-- Terminal 2: `cd ~/Documents/desk-buddy && claude` (hooks only fire when Claude
-  Code starts in the folder containing `.claude/settings.json`; restart Claude Code
-  after editing that file)
+- Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude`, then `claude` inside it
+  (tmux is needed for the redo button; hooks only fire when Claude Code starts in the
+  folder containing `.claude/settings.json`; restart Claude Code after editing that file)
+- Fake button press: `curl -X POST http://127.0.0.1:8765/button`
+- Every Claude Code session opened in this folder fires the hooks, including the
+  VS Code chat used for building. Use `BUDDY_QUIET=1` while building.
 - IMPORTANT: hooks, `say`, the serial port and tmux all need the user's Mac. A cloud
   Claude Code session can edit this repo but cannot test any of that. Testing happens
   on the Mac after `git pull`.
@@ -50,6 +55,10 @@ button presses.
 - Notification (permission_prompt) -> NEEDS_YOU ("NEEDS YOU!"), starts nag timer
 - Nag timer (asyncio task): 10 s ANNOYED + speech, 25 s YELLING + speech, then repeat
   every 20 s, max 3 repeats, then gives up. Each nag checks detector.is_distracted().
+- Button (POST /button): only in DONE, ANNOYED, YELLING (not WORKING: message would
+  queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
+  nag, stops speech, sets WORKING "redoing..." BEFORE typing so a double press is
+  ignored, then types REDO_MESSAGE. tmux failure -> DONE "REDO FAILED".
 - LCD text is max 16 chars; `_set_state` raises if longer.
 - Hook payload values are never logged (they contain prompts and Claude's replies,
   which can contain secrets). Only field names, at DEBUG level.
@@ -120,30 +129,35 @@ Faces: row 1 = eyes using `>` and `<` (the mascot's eyes), row 2 = status text.
 
 ## Status
 
-- Done and tested on the Mac: hook server, hooks firing from real Claude Code
-  (WORKING then DONE confirmed).
-- Delivered, not yet confirmed on the Mac: nag timer + `say` (milestone 2).
+- Done and tested on the Mac: hook server, hooks firing from real Claude Code,
+  nag timer + `say` (milestone 2), redo button via curl + tmux (Nov 20).
 - STM32: not started. First step is an LED blink on PB14 (LED2) in STM32CubeIDE
   (board selector B-L4S5I-IOT01A, init peripherals in default mode).
 
 ## Next steps, in order
 
-1. Redo button on the laptop side: POST /button endpoint (fake press for testing) ->
-   service -> `tmux send-keys -t claude "<redo message>" Enter`. Redo message should
-   ask Claude to list what may be wrong with its last answer, then try a different
-   approach (a bare "redo it" gives Claude nothing to work with).
-2. STM32: LED blink, then serial hello to the Mac, then LCD text.
+1. Webcam detector (OpenCV + YOLO "cell phone" class) replacing AlwaysDistracted.
+   macOS needs Camera permission for the terminal app. Agreed behaviour (Ben, Nov 20):
+   - The camera decides whether to yell, not a fixed timer. Looking at the screen
+     (no phone) = reviewing = never yelled at, however long it takes.
+   - Phone is fine while Claude is WORKING. Only watched after DONE / NEEDS_YOU.
+   - Phone visible ~2 s (a glance doesn't count) -> ANNOYED + voice, then YELLING if
+     the phone stays out, repeats as before.
+   - Phone put down -> calm down immediately: stop speech, back to DONE. Phone up
+     again restarts the nagging.
+   - Risk: a phone held low in the lap is out of the webcam's view. Demo: hold it up.
+2. STM32 (on hold, Tyler's firmware/ project conflicts with the wiring above: different
+   pins, I2C enabled, IAR EWARM toolchain instead of STM32CubeIDE. Resolve first.)
 3. `outputs/serial_output.py` (pyserial) replacing ConsoleOutput, plus a reader
-   thread for `BTN`.
-4. Webcam detector (OpenCV + small YOLO "cell phone" class, distracted if phone seen
-   ~3 s) replacing AlwaysDistracted. macOS needs Camera permission for the terminal app.
-5. Optional: Claude Haiku-generated roasts using last_assistant_message.
+   thread for `BTN` that calls `service.on_button_pressed()`.
+4. Optional: Claude Haiku-generated roasts using last_assistant_message.
 
 ## Known gaps (keep this list current)
 
 - Shortcut: AlwaysDistracted, so it nags even when the user is reading Claude's reply.
 - Shortcut: spoken lines are fixed text.
 - Only one Claude Code session supported (session_id ignored, two sessions would clash).
+- Shortcut: tmux session name `claude` is hardcoded in dependencies.py.
 - State is in memory; restart resets to IDLE.
 - No automated tests yet.
 - Production version would: keep state per session_id, require a token header on hooks.

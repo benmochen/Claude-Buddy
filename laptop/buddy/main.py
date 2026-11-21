@@ -4,7 +4,7 @@ import logging
 
 from fastapi import FastAPI
 
-from buddy.api import hooks, status
+from buddy.api import button, hooks, status
 
 # INFO shows state changes. Change to logging.DEBUG to also see which
 # fields each hook sent (names only, never values).
@@ -13,3 +13,4 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 app = FastAPI(title="Desk buddy")
 app.include_router(hooks.router)
 app.include_router(status.router)
+app.include_router(button.router)

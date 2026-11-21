@@ -37,15 +37,32 @@ ESCALATION_STEPS = [
 REPEAT_EVERY_SECONDS = 20
 MAX_REPEATS = 3
 
+# What the redo button types into Claude Code. One line only: a newline
+# would press Enter halfway through. A bare "redo it" gives Claude nothing
+# to work with, so it asks Claude to find the problems first.
+REDO_MESSAGE = (
+    "That wasn't good enough. Before redoing it, list what might be wrong "
+    "with your last answer (bugs, wrong assumptions, things you skipped or "
+    "didn't check). Then redo it with a different approach."
+)
+
+# The button only does something when Claude has finished and is waiting.
+# WORKING: Claude is busy, the message would pile up behind the current task.
+# NEEDS_YOU: Claude is showing a permission menu, typed text could pick an option.
+# IDLE: nothing has happened yet, so there's nothing to redo.
+REDO_ALLOWED_STATES = (BuddyState.DONE, BuddyState.ANNOYED, BuddyState.YELLING)
+
 
 class BuddyService:
-    def __init__(self, output, speaker, detector) -> None:
-        # output:   anything with show(state, text)   (ConsoleOutput now, LCD later)
-        # speaker:  anything with speak(text), stop() (Speaker)
-        # detector: anything with is_distracted()     (AlwaysDistracted now, webcam later)
+    def __init__(self, output, speaker, detector, claude_input) -> None:
+        # output:       anything with show(state, text)   (ConsoleOutput now, LCD later)
+        # speaker:      anything with speak(text), stop() (Speaker)
+        # detector:     anything with is_distracted()     (AlwaysDistracted now, webcam later)
+        # claude_input: anything with async send(text)    (TmuxTyper)
         self._output = output
         self._speaker = speaker
         self._detector = detector
+        self._claude_input = claude_input
 
         self._state = BuddyState.IDLE
         # time.monotonic() is a clock that never jumps backwards
@@ -77,6 +94,30 @@ class BuddyService:
     def on_needs_input(self) -> None:
         self._set_state(BuddyState.NEEDS_YOU, "NEEDS YOU!")
         self._start_escalation()
+
+    # ---- Called by the button route (and later the serial reader) ----
+
+    async def on_button_pressed(self) -> str:
+        # Returns a short result string for the curl reply and the log.
+        if self._state not in REDO_ALLOWED_STATES:
+            logger.info("Button ignored in state %s", self._state.value)
+            return f"ignored: state is {self._state.value}"
+
+        # Stop nagging and switch to WORKING BEFORE typing. Typing takes
+        # half a second, and a second press during that time now sees
+        # WORKING and is ignored, so Claude never gets the message twice.
+        self._cancel_escalation()
+        self._speaker.stop()
+        self._set_state(BuddyState.WORKING, "redoing...")
+
+        # Type the message into Claude Code. When Claude receives it, the
+        # UserPromptSubmit hook fires and sets WORKING "thinking..." as usual.
+        sent = await self._claude_input.send(REDO_MESSAGE)
+        if not sent:
+            # Usually means Claude isn't running inside `tmux new -s claude`.
+            self._set_state(BuddyState.DONE, "REDO FAILED")
+            return "failed: could not type into tmux session 'claude' (see server log)"
+        return "sent"
 
     # ---- Called by the status route ----
 
