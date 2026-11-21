@@ -10,7 +10,7 @@ speaker and shows an angry face on an LCD. A big "slam" button sends a
 Claude Code hooks (HTTP) -> FastAPI daemon on the Mac -> (USB serial) -> STM32 -> LCD
 STM32 button -> (USB serial "BTN") -> daemon -> `tmux send-keys` -> Claude Code
 Daemon -> macOS `say` -> headphone jack -> speaker
-Webcam (later) -> daemon decides "distracted or not"
+Webcam -> MediaPipe (head angle + eyes) -> daemon decides "looking at the screen or not"
 
 Everything smart runs on the laptop. The STM32 only draws on the LCD and reports
 button presses.
@@ -26,18 +26,28 @@ button presses.
     output / speaker / detector. Only file to edit when swapping implementations.
   - `buddy/api/hooks.py`: POST /hooks/prompt-submit, /hooks/stop, /hooks/notification (reply 204)
   - `buddy/api/status.py`: GET /status
+  - `buddy/api/camera.py`: POST /calibrate (re-measure the "working" head position, 3 s)
   - `buddy/api/button.py`: POST /button (redo button; curl now, STM32 later). Replies {"result": ...}
   - `buddy/services/buddy_service.py`: all logic, including the nag timer
   - `buddy/outputs/console_output.py`: prints state (stand-in for the LCD)
   - `buddy/outputs/speaker.py`: macOS `say` via subprocess.Popen (list args, no shell)
   - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
-  - `buddy/detectors/always_distracted.py`: stub, always returns True
+  - `buddy/detectors/attention_detector.py`: webcam + MediaPipe Face Landmarker in a
+    background thread (15 fps). Not looking = head down > 10 deg vs calibrated working
+    position, head turned > 30 deg, eyeLookDown or eyeBlink 0.35 above baseline, or no
+    face. is_distracted() = not looking for 2 s (0.5 s gaps ignored). Calibrates during
+    the first 3 s with a face. Model auto-downloads to laptop/models/ (gitignored).
+  - `buddy/detectors/always_distracted.py`: stub, always True (BUDDY_NO_CAMERA=1)
+  - `camera_test.py`: run the detector alone with a video window and live numbers
+    (c = recalibrate, q = quit). `python camera_test.py 1` for another camera.
 - `firmware/`: empty, the STM32CubeIDE project goes here
 
 ## Running it (user's Mac, project at ~/Documents/desk-buddy)
 
 - Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --port 8765`
-  (prefix `BUDDY_QUIET=1` to print `[SAY] ...` instead of speaking)
+  Env vars in front: `BUDDY_QUIET=1` prints `[SAY] ...` instead of speaking;
+  `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1.
+  Look at the screen while it starts (calibration). Recalibrate: `curl -X POST http://127.0.0.1:8765/calibrate`
 - Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude`, then `claude` inside it
   (tmux is needed for the redo button; hooks only fire when Claude Code starts in the
   folder containing `.claude/settings.json`; restart Claude Code after editing that file)
@@ -50,12 +60,15 @@ button presses.
 
 ## Behaviour implemented
 
-- Prompt submitted -> WORKING ("thinking..."), cancels nag timer, cuts off speech
-- Stop hook -> DONE ("DONE. LOOK UP."), starts nag timer
-- Notification (permission_prompt) -> NEEDS_YOU ("NEEDS YOU!"), starts nag timer
-- Nag timer (asyncio task): 10 s ANNOYED + speech, 25 s YELLING + speech, then repeat
-  every 20 s, max 3 repeats, then gives up. Each nag checks detector.is_distracted().
-- Button (POST /button): only in DONE, ANNOYED, YELLING (not WORKING: message would
+- Prompt submitted -> WORKING ("thinking..."), stops the watch loop, cuts off speech.
+  The camera is ignored while Claude works.
+- Stop hook -> DONE ("DONE. LOOK UP."), starts the watch loop
+- Notification (permission_prompt) -> NEEDS_YOU ("NEEDS YOU!"), starts the watch loop
+- Watch loop (asyncio task, checks detector every 0.25 s): distracted -> ANNOYED + speech
+  at once, YELLING + speech 8 s later, repeat every 15 s, max 3, then quiet. Looking
+  back -> stop speech, return to DONE / NEEDS_YOU. Looking away again restarts from ANNOYED.
+- Button (POST /button): only in DONE, ANNOYED, YELLING, and never while the watch loop
+  is waiting on NEEDS_YOU (not WORKING: message would
   queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
   nag, stops speech, sets WORKING "redoing..." BEFORE typing so a double press is
   ignored, then types REDO_MESSAGE. tmux failure -> DONE "REDO FAILED".
@@ -73,6 +86,12 @@ button presses.
 - Redo button injects text with `tmux send-keys` because hooks cannot start a new turn.
   Claude Code must be started inside tmux: `tmux new -s claude` then `claude`.
 - Port 8765 to avoid clashing with other FastAPI apps on 8000.
+- Attention (head/eyes) instead of phone detection: tried YOLO "cell phone" first, but a
+  phone held normally is below the webcam's view, and a phone-camera stream was too
+  laggy. Trade-off: any looking away counts (notes, a teammate), not just the phone.
+- Head down only counts DOWN (signed pitch; pitch rises when looking down on Ben's Mac).
+  eyeBlink is used too because MediaPipe often reports lowered eyelids, not eyeLookDown,
+  when looking down at a phone.
 
 ## Hardware (exact parts)
 
@@ -130,22 +149,14 @@ Faces: row 1 = eyes using `>` and `<` (the mascot's eyes), row 2 = status text.
 ## Status
 
 - Done and tested on the Mac: hook server, hooks firing from real Claude Code,
-  nag timer + `say` (milestone 2), redo button via curl + tmux (Nov 20).
+  nag timer + `say` (milestone 2), redo button via curl + tmux, attention detector in
+  camera_test.py (Nov 20). Camera-driven buddy confirmed working with the server (Nov 20).
 - STM32: not started. First step is an LED blink on PB14 (LED2) in STM32CubeIDE
   (board selector B-L4S5I-IOT01A, init peripherals in default mode).
 
 ## Next steps, in order
 
-1. Webcam detector (OpenCV + YOLO "cell phone" class) replacing AlwaysDistracted.
-   macOS needs Camera permission for the terminal app. Agreed behaviour (Ben, Nov 20):
-   - The camera decides whether to yell, not a fixed timer. Looking at the screen
-     (no phone) = reviewing = never yelled at, however long it takes.
-   - Phone is fine while Claude is WORKING. Only watched after DONE / NEEDS_YOU.
-   - Phone visible ~2 s (a glance doesn't count) -> ANNOYED + voice, then YELLING if
-     the phone stays out, repeats as before.
-   - Phone put down -> calm down immediately: stop speech, back to DONE. Phone up
-     again restarts the nagging.
-   - Risk: a phone held low in the lap is out of the webcam's view. Demo: hold it up.
+1. Tune timings and spoken lines for the demo (ESCALATION_STEPS in buddy_service.py).
 2. STM32 (on hold, Tyler's firmware/ project conflicts with the wiring above: different
    pins, I2C enabled, IAR EWARM toolchain instead of STM32CubeIDE. Resolve first.)
 3. `outputs/serial_output.py` (pyserial) replacing ConsoleOutput, plus a reader
@@ -154,7 +165,9 @@ Faces: row 1 = eyes using `>` and `<` (the mascot's eyes), row 2 = status text.
 
 ## Known gaps (keep this list current)
 
-- Shortcut: AlwaysDistracted, so it nags even when the user is reading Claude's reply.
+- Detector limits were tuned on one test (Ben, his desk, his lighting). Different
+  lighting or seating on demo day: recalibrate, maybe retune.
+- Camera light is on the whole time the server runs.
 - Shortcut: spoken lines are fixed text.
 - Only one Claude Code session supported (session_id ignored, two sessions would clash).
 - Shortcut: tmux session name `claude` is hardcoded in dependencies.py.

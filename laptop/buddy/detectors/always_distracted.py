@@ -1,11 +1,19 @@
 # Answers "is the user distracted right now?"
 #
-# SHORTCUT: this version always says yes, so the buddy nags whenever you
-# don't send a new prompt in time, even if you were reading Claude's output.
-# The webcam version (webcam_detector.py, later) will have the same
-# is_distracted() method and replace this one in dependencies.py.
+# SHORTCUT: this version always says yes, so the buddy nags as soon as
+# Claude finishes. Only used with BUDDY_NO_CAMERA=1. The real one is
+# attention_detector.py, which has the same methods.
 
 
 class AlwaysDistracted:
+    def start(self) -> None:
+        pass  # no camera to open
+
+    def stop(self) -> None:
+        pass  # no camera to close
+
+    def recalibrate(self) -> None:
+        pass  # nothing to calibrate
+
     def is_distracted(self) -> bool:
         return True

@@ -230,15 +230,30 @@ class AttentionDetector:
 
     def _loop(self) -> None:
         seconds_per_check = 1.0 / CHECKS_PER_SECOND
+        # Failed reads in a row. Used to warn once with advice instead of
+        # printing the same line every second.
+        failed_reads = 0
 
         while self._running:
             started = time.monotonic()
 
             ok, frame = self._camera.read()
             if not ok:
-                logger.warning("Could not read a frame from the camera")
+                failed_reads += 1
+                # Warn on the 3rd failure (one or two at startup are normal),
+                # then only every 30 s.
+                if failed_reads == 3 or failed_reads % 30 == 0:
+                    logger.warning(
+                        "Camera %d sends no images. If it's your iPhone (Continuity Camera), "
+                        "turn that off on the iPhone: Settings > General > AirPlay & Continuity, "
+                        "then restart the server. Or start the server with BUDDY_CAMERA=1.",
+                        self._camera_index,
+                    )
                 time.sleep(1)
                 continue
+            if failed_reads >= 3:
+                logger.info("Camera %d is sending images again", self._camera_index)
+            failed_reads = 0
 
             # OpenCV stores colours as Blue-Green-Red, MediaPipe wants Red-Green-Blue.
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
