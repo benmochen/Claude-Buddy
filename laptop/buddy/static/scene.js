@@ -278,7 +278,8 @@
 
   function setMood(mood, changed, secondsIn) {
     const now = performance.now() / 1000;
-    if (changed || mood !== bud.mood) {
+    if (changed || mood !== bud.mood || !bud.synced) {
+      bud.synced = true; // the first status also tells us how long it's been in this mood
       bud.mood = mood;
       bud.moodSince = now - (secondsIn || 0);
       bud.pauseUntil = 0;
@@ -396,7 +397,7 @@
 
   function faceFor(now, sleepy) {
     if (sleepy) return "sleep";
-    const base = Critter.MOODS[bud.mood].face;
+    const base = (Critter.MOODS[bud.mood] || Critter.MOODS.IDLE).face;
     if (base === "open" || base === "focus") {
       if (now >= bud.nextBlink) { bud.blinkAt = now; bud.nextBlink = now + 2 + Math.random() * 4; }
       if (now < bud.blinkAt + 0.14) return "blink";
@@ -422,11 +423,17 @@
     if (sleepy) {
       // three Zs drifting up
       for (let k = 0; k < 3; k++) {
-        const t = reduceMotion.matches ? k / 3 : ((now * 0.5 + k / 3) % 1);
-        const zx = cx + 6 * p + t * 8 * p + k * p;
-        const zy = headTop - 3 * p - t * 12 * p;
+        // each Z keeps its own slot on a rising diagonal and only drifts a little, so they never overlap
+        const drift = reduceMotion.matches ? 0 : ((now * 0.5 + k / 3) % 1);
+        const zx = cx + 7 * p + k * 7 * p + drift * 2 * p;
+        const zy = headTop - 3 * p - k * 8 * p - drift * 3 * p;
         const s = p * (k === 2 ? 2 : 1);
-        rect("#ffffff", zx, zy, 3 * s, s); rect("#ffffff", zx + s, zy + s, s, s); rect("#ffffff", zx, zy + 2 * s, 3 * s, s);
+        // a 5x5 pixel Z: top bar, a three-step diagonal, bottom bar (smaller ones read as an I)
+        rect("#ffffff", zx, zy, 5 * s, s);
+        rect("#ffffff", zx + 3 * s, zy + s, s, s);
+        rect("#ffffff", zx + 2 * s, zy + 2 * s, s, s);
+        rect("#ffffff", zx + s, zy + 3 * s, s, s);
+        rect("#ffffff", zx, zy + 4 * s, 5 * s, s);
       }
       return;
     }
