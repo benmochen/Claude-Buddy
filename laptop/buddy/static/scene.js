@@ -42,6 +42,34 @@
   const FAR = rgb("#7f9fc6");
   const FAR_SHADE = rgb("#6d8db6");
 
+  // ---------- time of day, from the real local clock ----------
+  // shortcut: fixed hours year-round (no seasons or location), good enough for a desk toy.
+  const SKIES = {
+    day: SKY,
+    sunset: ["#2b2c6e", "#4a3b8f", "#7a4b9c", "#b45e93", "#e47a7c", "#f6a06a", "#ffc77a"].map(rgb),
+    night: ["#040a1e", "#071129", "#0a1834", "#0e1f3f", "#13284b", "#193156", "#203a5f"].map(rgb),
+  };
+  // How each look tints the land and clouds (multiplies their colours).
+  const TINTS = { day: [1, 1, 1], sunset: [1, 0.8, 0.72], night: [0.26, 0.4, 0.55] };
+  // [hour, look]: blend between neighbours, so 18:00 to 19:00 fades day into sunset.
+  const KEYS = [[0, "night"], [5, "night"], [6, "sunset"], [7, "day"], [18, "day"], [19, "sunset"], [20, "night"], [24, "night"]];
+  let light = null;    // the blended look the background was last painted with
+  let lightStep = -1;  // which 5-minute slot that was, so we repaint only when it changes
+
+  function clockHour() { const d = new Date(); return d.getHours() + d.getMinutes() / 60; }
+  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+  function tinted(c, tint) { return [Math.round(c[0] * tint[0]), Math.round(c[1] * tint[1]), Math.round(c[2] * tint[2])]; }
+  function lightAt(hour) {
+    let k = 0;
+    while (hour >= KEYS[k + 1][0]) k++;
+    const a = KEYS[k];
+    const b = KEYS[k + 1];
+    const t = (hour - a[0]) / (b[0] - a[0]);
+    const sky = SKIES[a[1]].map(function (c, i) { return mix(c, SKIES[b[1]][i], t).map(Math.round); });
+    const night = (a[1] === "night" ? 1 - t : 0) + (b[1] === "night" ? t : 0);
+    return { sky: sky, tint: mix(TINTS[a[1]], TINTS[b[1]], t), night: night };
+  }
+
   // ---------- geometry ----------
   // portrait screens push the land down so the info panel doesn't cover the hilltop
   function drop() { return W < H ? H * 0.1 : 0; }
@@ -56,6 +84,11 @@
   function stageX() { return W * 0.5; }
 
   function paintBackground() {
+    const tint = light.tint;
+    const grass = GRASS.map(function (c) { return tinted(c, tint); });
+    const field = FIELD.map(function (c) { return tinted(c, tint); });
+    const far = tinted(FAR, tint);
+    const farShade = tinted(FAR_SHADE, tint);
     const img = ctx.createImageData(W, H);
     const d = img.data;
     const skyImg = ctx.createImageData(W, H);
@@ -72,21 +105,25 @@
           const t = Math.min(1, (y - fy) / (H - fy + 1));
           const n = hash(x >> 1, y) * 0.35;
           const v = (1 - t) * 0.55 + 0.25 + n - 0.15;
-          c = band(FIELD, v, x, y);
-          if (hash(x, y * 7) > 0.994 && y > fy + 2) c = hash(y, x) > 0.5 ? [255, 236, 102] : [255, 255, 240];
+          c = band(field, v, x, y);
+          if (hash(x, y * 7) > 0.994 && y > fy + 2) c = tinted(hash(y, x) > 0.5 ? [255, 236, 102] : [255, 255, 240], tint);
         } else if (y >= top) {
           // the hill: lit from the upper left, so slopes facing left glow
           const slope = (hillY(x + 1) - hillY(x - 1)) / 2;
           const depth = (y - top) / (fy - top + 1);
           let v = 0.62 - slope * 0.9 - depth * 0.38 + (hash(x, y) - 0.5) * 0.16;
           if (y - top < 1.5) v += 0.18; // sunlit rim
-          c = band(GRASS, v, x, y);
+          c = band(grass, v, x, y);
         } else {
           const farTop = hz - 7 * Math.max(0, Math.sin((x / W - 0.62) * 9)) - 3 * Math.max(0, Math.sin(x / 11));
           if (x > W * 0.62 && y >= farTop && y < hz + 2) {
-            c = hash(x, y) > 0.7 || y > farTop + 3 ? FAR_SHADE : FAR;
+            c = hash(x, y) > 0.7 || y > farTop + 3 ? farShade : far;
           } else {
-            c = band(SKY, Math.min(1, y / hz), x, y);
+            c = band(light.sky, Math.min(1, y / hz), x, y);
+            // stars fade in with the night, thinning toward the horizon
+            if (light.night > 0 && hash(x * 3, y * 5) > 1 - 0.008 * light.night * (1 - y / hz)) {
+              c = hash(x, y * 3) > 0.6 ? [235, 240, 255] : [150, 165, 210];
+            }
             sd[i] = c[0]; sd[i + 1] = c[1]; sd[i + 2] = c[2]; sd[i + 3] = 255;
             continue; // sky stays transparent on the land layer
           }
@@ -112,7 +149,7 @@
   }
 
   // ---------- clouds ----------
-  function makeCloud(rand, size) {
+  function makeCloud(rand, size, tint) {
     const w = Math.round(size * (1.8 + rand()));
     const h = Math.round(size * 0.9);
     const c = document.createElement("canvas");
@@ -135,22 +172,102 @@
         if (!inside || y > h - 2) continue;
         const i = (y * w + x) * 4;
         const under = y / h > 0.62 + dither(x, y) * 0.18;
-        const col = under ? [214, 228, 246] : [255, 255, 255];
+        const col = tinted(under ? [214, 228, 246] : [255, 255, 255], tint);
         data.data[i] = col[0]; data.data[i + 1] = col[1]; data.data[i + 2] = col[2]; data.data[i + 3] = 255;
       }
     }
     g.putImageData(data, 0, 0);
     return c;
   }
-  function makeClouds() {
+  function makeClouds(old) {
     const rand = seeded(7);
     const list = [];
     const count = Math.max(3, Math.round(W / 60));
     for (let k = 0; k < count; k++) {
       const size = 10 + rand() * 14;
-      list.push({ img: makeCloud(rand, size), x: (k / count) * W + rand() * 30, y: 4 + rand() * (H * 0.4), speed: 1.2 + rand() * 2.2 });
+      const x = (k / count) * W + rand() * 30;
+      list.push({ img: makeCloud(rand, size, light.tint), x: old ? old[k].x : x, y: 4 + rand() * (H * 0.4), speed: 1.2 + rand() * 2.2 });
     }
     return list;
+  }
+
+  // Repaint the sky, land and clouds when the clock enters a new 5-minute slot.
+  function updateLight(force) {
+    const hour = clockHour();
+    const step = Math.floor(hour * 12);
+    if (!force && step === lightStep) return;
+    lightStep = step;
+    light = lightAt(hour);
+    paintBackground();
+    clouds = makeClouds(force ? null : clouds);
+  }
+
+  // ---------- sun and moon, on one arc across the sky ----------
+  function disk(cx, cy, r, color) {
+    ctx.fillStyle = color;
+    for (let dy = -r; dy <= r; dy++) {
+      const w = Math.round(Math.sqrt(r * r - dy * dy));
+      ctx.fillRect(Math.round(cx - w), Math.round(cy + dy), 2 * w + 1, 1);
+    }
+  }
+  // A clean pixel crescent, built once: moon pixels outside a shadow circle, measured
+  // from pixel centres so both curves are smooth, then stray single pixels trimmed.
+  let moonCache = null;
+  function moonSprite() {
+    if (moonCache) return moonCache;
+    const n = 21;
+    const lit = {};
+    function key(x, y) { return x + "," + y; }
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const px = x + 0.5 - n / 2;
+        const py = y + 0.5 - n / 2;
+        const inMoon = px * px + py * py <= 10.5 * 10.5;
+        const inShadow = (px - 5) * (px - 5) + py * py <= 9.5 * 9.5;
+        if (inMoon && !inShadow) lit[key(x, y)] = true;
+      }
+    }
+    let changed = true;
+    while (changed) {
+      changed = false;
+      Object.keys(lit).forEach(function (k) {
+        const xy = k.split(",").map(Number);
+        let nb = 0;
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { if (lit[key(xy[0] + d[0], xy[1] + d[1])]) nb++; });
+        if (nb < 2) { delete lit[k]; changed = true; }
+      });
+    }
+    moonCache = document.createElement("canvas");
+    moonCache.width = moonCache.height = n;
+    const g = moonCache.getContext("2d");
+    g.fillStyle = "#f4f1e4";
+    Object.keys(lit).forEach(function (k) { const xy = k.split(","); g.fillRect(+xy[0], +xy[1], 1, 1); });
+    // three small craters in the thick middle of the crescent
+    g.fillStyle = "#d8d2c0";
+    g.fillRect(2, 8, 2, 1);
+    g.fillRect(1, 12, 1, 1);
+    g.fillRect(3, 11, 1, 2);
+    return moonCache;
+  }
+
+  function drawSunAndMoon() {
+    const hour = clockHour();
+    const hz = horizonY();
+    // t runs 0 to 1 across the body's time in the sky; below the horizon the land hides it
+    // kept right of the info panel and high, so it rarely hides behind Claude
+    function arc(t) { return { x: W * (0.32 + 0.64 * t), y: hz + 6 - Math.sin(Math.PI * t) * H * 0.58 }; }
+    if (hour >= 5.5 && hour <= 19.8) {
+      const t = (hour - 5.5) / 14.3;
+      const p = arc(t);
+      const low = 1 - Math.min(1, Math.sin(Math.PI * t) * 1.6); // 1 near the horizon
+      disk(p.x, p.y, 13, "rgba(255,240,170,0.3)");
+      disk(p.x, p.y, 9, low > 0.5 ? "#ff9a4d" : "#fff1a8");
+    }
+    if (hour >= 19.5 || hour <= 6) {
+      const p = arc(((hour - 19.5 + 24) % 24) / 10.5);
+      disk(p.x, p.y, 15, "rgba(244,241,228,0.06)");
+      ctx.drawImage(moonSprite(), Math.round(p.x) - 10, Math.round(p.y) - 10);
+    }
   }
 
   // ---------- the critter's brain ----------
@@ -220,6 +337,7 @@
 
   function render(now, sleepy) {
     ctx.drawImage(sky, 0, 0);
+    drawSunAndMoon();
     for (const c of clouds) ctx.drawImage(c.img, Math.round(c.x), Math.round(c.y));
     ctx.drawImage(land, 0, 0);
 
@@ -348,8 +466,7 @@
     canvas.width = W;
     canvas.height = H;
     ctx.imageSmoothingEnabled = false;
-    paintBackground();
-    clouds = makeClouds();
+    updateLight(true);
     if (!bud.x) bud.x = stageX() - W * 0.06;
     bud.x = Math.max(W * 0.1, Math.min(W * 0.9, bud.x));
     bud.target = pickTarget();
@@ -363,6 +480,7 @@
     if (!reduceMotion.matches) {
       for (const c of clouds) c.x = ((c.x + c.speed * dt + c.img.width) % (W + c.img.width)) - c.img.width;
     }
+    updateLight(false);
     const sleepy = update(dt, now);
     render(now, sleepy);
     requestAnimationFrame(frame);

@@ -10,6 +10,15 @@ colors:
   mood-done: "#7fe0a8"
   mood-needs-you: "#ff86b0"
   mood-offline: "#9a9cad"
+  mood-annoyed: "#ffa45c"
+  mood-yelling: "#ff5f5f"
+  stats-bar-soft: "#7a4535"
+  critter-strawberry: "#e05a6d"
+  critter-banana: "#f2c94c"
+  critter-mint: "#5cc8b8"
+  critter-blueberry: "#6b8fe6"
+  critter-licorice: "#2e2b33"
+  critter-marshmallow: "#efe7dc"
   hud-navy: "#11152a"
   hud-edge: "#0a0c1a"
   hud-rim: "rgb(255 255 255 / 0.14)"
@@ -162,11 +171,16 @@ A saturated wallpaper landscape behind a near-black navy HUD, with four mood hue
 - **Sticker Cream** (sticker-cream): the one-pixel die-cut rim drawn around the critter on the scene. It is what makes the critter a sticker.
 - **Critter Ink** (critter-ink): the critter's eyes. It has no mouth: every mood shows through the eyes, arms and behaviour alone.
 
+### Critter colours
+
+The user picks the critter's body colour in Settings from eight squares: Claude orange (the default) and six presets (critter-strawberry, critter-banana, critter-mint, critter-blueberry, critter-licorice, critter-marshmallow; only Licorice gets light eyes), plus a rainbow square that opens a pixel colour wheel (hue around the wheel, strength from the grey centre to the edge, brightness fixed at 0.85 so the eyes stay readable). The shade and highlight come from the chosen colour. The choice is saved in the browser only.
+
 ### Secondary: the mood hues
 - **Periwinkle** (mood-idle): IDLE.
 - **Butter Yellow** (mood-working): WORKING.
 - **Mint** (mood-done): DONE.
 - **Hot Pink** (mood-needs-you): NEEDS_YOU.
+- **Warning Orange** (mood-annoyed) and **Alarm Red** (mood-yelling): ANNOYED and YELLING, the two nag-timer moods.
 - **Slate** (mood-offline): replaces the mood hue when the service is unreachable.
 
 The active hue is a single live value (`--hue`) switched on `body[data-mood]`. It drives the panel's top band, the mood name, lit time-bar steps, the seen flag and text selection. Text on a hue fill is Ink on Hue (ink-on-hue).
@@ -206,6 +220,10 @@ The active hue is a single live value (`--hue`) switched on `body[data-mood]`. I
 - **Label** (500, 18px, 1): stone button text, with a 2px pixel drop of Label Shadow.
 - **Caption** (400, 14px): character counters (tabular numerals), field errors, the seen flag (700, uppercase).
 - **LCD** (VT323 26px, 1.05; 20px under 720px): one character per LCD cell. **LCD Input** (VT323 24px) for the message fields, so typing previews the device's own letterforms.
+
+### Numbers
+
+Every number in running text (timers, stats values, changes, times of day, character counts) is set in VT323 at 1.3em inside its line. Pixelify Sans draws 5 and S almost identically, which makes figures misreadable; words stay in Pixelify Sans.
 
 ### Named Rules
 **The Screen Speaks VT323 Rule.** VT323 is used only for text that is, or previews, the buddy's LCD (cells, the message inputs, inline `code`). All other text is Pixelify Sans.
@@ -272,6 +290,10 @@ A 16-cell character LCD: LCD Bezel frame (8px padding, 2px near-black border), L
 
 ### Time-in-Mood Bar (signature)
 Twenty 8x6px steps with 2px gaps; lit steps take the mood hue, unlit ones are 12% white. Steps fill on a log scale up to 10 minutes.
+
+### Stats Panel
+
+Screen Time's information design in the HUD's own material. A navy side panel like Settings, opened by the Stats stone button. Week and Today are two stone buttons; the active one is pressed. Each view asks one question ("how long did Claude wait on you?"): a caption, one big number in VT323 at 56px (the LCD face, whose digits stay legible where the pixel font's 5 reads as S), and one comparison with a stepped pixel arrow (Mint when the wait went down, Alarm Red when it went up). Week view: square bars in a dark inset well like the LCD, earlier days in stats-bar-soft, today in Claude orange, with a Signal Yellow pixel-dashed average line. Today view: the same well and bars, one bar per hour showing the minutes Claude waited on you, all in Claude orange, with nag time stacked on top in Alarm Red and a two-item legend. Then at most four list rows separated by rim lines, each led by a critter face, with the value in soft ink. In Week view every row is a daily average, matching the headline, so nothing needs converting. A small "Sample" tag marks sample numbers.
 
 ### Seen Flag
 A small uppercase "New" chip in the mood hue with Ink on Hue text, blinking in two hard steps, shown on DONE and NEEDS_YOU until the page has been looked at.

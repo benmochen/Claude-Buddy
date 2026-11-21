@@ -45,9 +45,9 @@ button presses.
 
 ## Behaviour implemented
 
-- Prompt submitted -> WORKING ("thinking..."), cancels nag timer, cuts off speech
-- Stop hook -> DONE ("DONE. LOOK UP."), starts nag timer
-- Notification (permission_prompt) -> NEEDS_YOU ("NEEDS YOU!"), starts nag timer
+- Prompt submitted -> WORKING ("..." by default), cancels nag timer, cuts off speech
+- Stop hook -> DONE ("Done"), starts nag timer
+- Notification (permission_prompt) -> NEEDS_YOU ("!!!"); these LCD lines are editable on the mood page, starts nag timer
 - Nag timer (asyncio task): 10 s ANNOYED + speech, 25 s YELLING + speech, then repeat
   every 20 s, max 3 repeats, then gives up. Each nag checks detector.is_distracted().
 - LCD text is max 16 chars; `_set_state` raises if longer.

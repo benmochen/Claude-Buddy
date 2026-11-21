@@ -36,13 +36,124 @@
     return data;
   }
 
+  const icons = []; // every small face on the page, so a colour change can redraw them
   function faceIcon(mood) {
     const c = document.createElement("canvas");
+    icons.push({ canvas: c, mood: mood });
     c.width = 18; c.height = 12;
     c.className = "face";
     c.setAttribute("aria-hidden", "true");
     Critter.drawIcon(c, mood);
     return c;
+  }
+
+  // ---------- Claude's colour: 7 presets, the 8th square opens a pixel colour wheel ----------
+  const LICORICE = "#2e2b33"; // the black option, the only one with light eyes
+  const COLORS = [
+    ["Claude orange", "#d97757"], ["Strawberry", "#e05a6d"], ["Banana", "#f2c94c"], ["Mint", "#5cc8b8"],
+    ["Blueberry", "#6b8fe6"], ["Licorice", LICORICE], ["Marshmallow", "#efe7dc"],
+  ];
+  const more = $("color-more");
+  const wheelBox = $("wheel-box");
+  const presetBtns = [];
+  COLORS.forEach(function (pair) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch";
+    b.style.background = pair[1];
+    b.title = pair[0];
+    b.setAttribute("aria-label", pair[0]);
+    b.addEventListener("click", function () { setColor(pair[1]); });
+    $("swatches").insertBefore(b, more);
+    presetBtns.push({ btn: b, hex: pair[1] });
+  });
+  more.addEventListener("click", function () {
+    wheelBox.hidden = !wheelBox.hidden;
+    more.setAttribute("aria-expanded", String(!wheelBox.hidden));
+    if (!wheelBox.hidden) wheel.focus();
+  });
+
+  // Hue goes around the wheel, strength from centre (grey) to edge (full colour).
+  // Brightness stays at 0.85, which keeps the dark eyes readable; Claude orange sits on it.
+  const DEFAULT_COLOR = COLORS[0][1];
+  const V = 0.85;
+  const wheel = $("wheel");
+  const wctx = wheel.getContext("2d");
+  const R = (wheel.width - 1) / 2;
+  let pick = { h: 0, s: 0 };
+
+  function hsvToHex(h, sat) {
+    function f(n) {
+      const k = (n + h / 60) % 6;
+      return Math.round(255 * (V - V * sat * Math.max(0, Math.min(k, 4 - k, 1))));
+    }
+    return "#" + [f(5), f(3), f(1)].map(function (v) { return v.toString(16).padStart(2, "0"); }).join("");
+  }
+  function hexToHs(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+    let h = 0;
+    if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return { h: (h * 60 + 360) % 360, s: max ? d / max : 0 };
+  }
+
+  function drawWheel() {
+    const img = wctx.createImageData(wheel.width, wheel.height);
+    for (let y = 0; y < wheel.height; y++) {
+      for (let x = 0; x < wheel.width; x++) {
+        const dx = x - R, dy = y - R, dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > R + 0.5) continue;
+        const hex = dist > R - 0.5 ? "#0e0e0e" : hsvToHex((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360, dist / R);
+        const n = parseInt(hex.slice(1), 16), i = (y * wheel.width + x) * 4;
+        img.data[i] = (n >> 16) & 255; img.data[i + 1] = (n >> 8) & 255; img.data[i + 2] = n & 255; img.data[i + 3] = 255;
+      }
+    }
+    wctx.putImageData(img, 0, 0);
+    // marker: a dark ring with a white inside, around the picked spot
+    const a = pick.h * Math.PI / 180;
+    const mx = Math.round(R + Math.cos(a) * pick.s * (R - 2));
+    const my = Math.round(R + Math.sin(a) * pick.s * (R - 2));
+    wctx.strokeStyle = "#0e0e0e"; wctx.strokeRect(mx - 2.5, my - 2.5, 5, 5);
+    wctx.strokeStyle = "#ffffff"; wctx.strokeRect(mx - 1.5, my - 1.5, 3, 3);
+  }
+
+  function pickAt(ev) {
+    const box = wheel.getBoundingClientRect();
+    const dx = (ev.clientX - box.left) / box.width * wheel.width - R - 0.5;
+    const dy = (ev.clientY - box.top) / box.height * wheel.height - R - 0.5;
+    pick = { h: (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360, s: Math.min(1, Math.sqrt(dx * dx + dy * dy) / (R - 1)) };
+    setColor(hsvToHex(pick.h, pick.s), true);
+  }
+  wheel.addEventListener("pointerdown", function (ev) { wheel.setPointerCapture(ev.pointerId); pickAt(ev); });
+  wheel.addEventListener("pointermove", function (ev) { if (wheel.hasPointerCapture(ev.pointerId)) pickAt(ev); });
+  wheel.addEventListener("keydown", function (ev) {
+    const step = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, 0.1], ArrowDown: [0, -0.1] }[ev.key];
+    if (!step) return;
+    ev.preventDefault();
+    pick = { h: (pick.h + step[0] + 360) % 360, s: Math.max(0, Math.min(1, pick.s + step[1])) };
+    setColor(hsvToHex(pick.h, pick.s), true);
+  });
+
+  function setColor(hex, fromWheel) {
+    Critter.setColor(hex, hex === LICORICE);
+    try { localStorage.setItem("buddy.color", hex); } catch (e) { /* private mode: just don't remember */ }
+    if (!fromWheel) pick = hexToHs(hex);
+    drawWheel();
+    let isPreset = false;
+    presetBtns.forEach(function (p) {
+      const on = p.hex === hex;
+      if (on) isPreset = true;
+      p.btn.setAttribute("aria-pressed", String(on));
+    });
+    more.classList.toggle("is-on", !isPreset);
+    more.style.setProperty("--custom", isPreset ? "transparent" : hex);
+    wheel.setAttribute("aria-valuenow", String(Math.round(pick.h)));
+    wheel.setAttribute("aria-valuetext", "hue " + Math.round(pick.h) + " degrees, strength " + Math.round(pick.s * 100) + " percent");
+    icons.forEach(function (i) { Critter.drawIcon(i.canvas, i.mood); });
+    const offline = document.body.classList.contains("is-offline");
+    Critter.drawIcon(el.moodFace, current && !offline ? current.state : "IDLE", offline);
+    if (current) setFavicon(current.state);
   }
 
   // ---------- stone texture for the blocky buttons ----------
@@ -194,7 +305,7 @@
   function tick() {
     if (!current || document.body.classList.contains("is-offline")) return;
     const sec = current.seconds_in_state + (performance.now() - fetchedAt) / 1000;
-    el.moodTime.textContent = MOODS[current.state].blurb + " · " + fmt(sec);
+    Stats.numText(el.moodTime, MOODS[current.state].blurb + " · " + fmt(sec));
     showBar(sec);
     updateTitle();
   }
@@ -243,7 +354,7 @@
   function validate(mood) {
     const f = inputs[mood];
     const msg = problem(f.input.value);
-    f.count.textContent = f.input.value.length + "/" + LCD_WIDTH;
+    Stats.numText(f.count, f.input.value.length + "/" + LCD_WIDTH);
     f.err.textContent = msg;
     f.row.classList.toggle("has-error", !!msg);
     f.input.setAttribute("aria-invalid", String(!!msg));
@@ -257,7 +368,25 @@
     ORDER.forEach(function (k) { inputs[k].input.value = messages[k] || ""; validate(k); });
   }
 
+  // ---------- side panels: Stats and Settings, one open at a time ----------
+  const stats = { toggle: $("stats-toggle"), panel: $("stats-panel"), close: $("stats-close") };
+  function openStats() {
+    if (!el.panel.hidden) closeSettings(true);
+    stats.panel.hidden = false;
+    stats.toggle.setAttribute("aria-expanded", "true");
+    Stats.show($("stats-body"), Stats.SAMPLE, Array.from(stats.panel.querySelectorAll(".sc-range button")));
+    stats.close.focus();
+  }
+  function closeStats(keepFocus) {
+    stats.panel.hidden = true;
+    stats.toggle.setAttribute("aria-expanded", "false");
+    if (!keepFocus) stats.toggle.focus();
+  }
+  stats.toggle.addEventListener("click", function () { stats.panel.hidden ? openStats() : closeStats(); });
+  stats.close.addEventListener("click", function () { closeStats(); });
+
   async function openSettings() {
+    if (!stats.panel.hidden) closeStats(true);
     el.panel.hidden = false;
     el.toggle.setAttribute("aria-expanded", "true");
     const pressed = el.moodButtons.querySelector('[aria-pressed="true"]');
@@ -270,14 +399,18 @@
       el.status.textContent = "Couldn't load the messages. Is the buddy service running?";
     }
   }
-  function closeSettings() {
+  function closeSettings(keepFocus) {
     el.panel.hidden = true;
     el.toggle.setAttribute("aria-expanded", "false");
-    el.toggle.focus();
+    if (!keepFocus) el.toggle.focus();
   }
   el.toggle.addEventListener("click", function () { el.panel.hidden ? openSettings() : closeSettings(); });
-  el.close.addEventListener("click", closeSettings);
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !el.panel.hidden) closeSettings(); });
+  el.close.addEventListener("click", function () { closeSettings(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (!el.panel.hidden) closeSettings();
+    if (!stats.panel.hidden) closeStats();
+  });
 
   el.form.addEventListener("submit", async function (e) {
     e.preventDefault();
@@ -306,6 +439,9 @@
     }
   });
 
+  let saved = null;
+  try { saved = localStorage.getItem("buddy.color"); } catch (e) { /* no storage: use the default */ }
+  setColor(/^#[0-9a-f]{6}$/i.test(saved || "") ? saved : DEFAULT_COLOR);
   showLcd("");
   poll();
 })();
