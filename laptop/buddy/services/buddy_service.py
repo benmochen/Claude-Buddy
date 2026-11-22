@@ -161,9 +161,10 @@ VOICE_GAP_SECONDS = 6.0
 # AND Terminal / VS Code in front) this long without a break, and never over
 # a line that's still playing. Dropped if the nagging starts again first.
 # Short on purpose (exception to the long graces): it's a reaction to you
-# coming back, and at 1.5 s (+0.5 s for the camera to see you look back) it
-# came 2-3 s late and sounded random. Now about 1 s after you look back.
-VOICE_THANKS_GRACE_SECONDS = 0.5
+# coming back, and at 1.5 s it came 3-4 s late and sounded random. Total
+# delay = ~0.5 s (camera sees you look back) + this + up to 0.25 s (next
+# check) + up to ~0.3 s (phone picks it up) = about 2 s (Ben's choice).
+VOICE_THANKS_GRACE_SECONDS = 1.0
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
