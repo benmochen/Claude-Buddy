@@ -148,10 +148,10 @@ OTHER_APP_GRACE_SECONDS = 2.0
 # A nag line only plays once you've been NOT locked in (looking away, or
 # another app in front) for this long without a break. Until then the line
 # waits (and is dropped if you come back).
-VOICE_NAG_GRACE_SECONDS = 4.0
+VOICE_NAG_GRACE_SECONDS = 7.0
 # No nag line in the first seconds after Claude finished / asked, so "Come
 # look" isn't followed straight away by a guilt trip.
-VOICE_QUIET_AFTER_DONE_SECONDS = 4.0
+VOICE_QUIET_AFTER_DONE_SECONDS = 7.0
 # "Thank you" only plays once you've been locked in (looking at the screen
 # AND Terminal / VS Code in front) this long without a break, and never over
 # a line that's still playing. Dropped if the nagging starts again first.
