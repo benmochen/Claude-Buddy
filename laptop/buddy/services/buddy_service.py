@@ -65,13 +65,13 @@ SOUND_GROUPS: Dict[str, List[str]] = {
     # Picked instead of "annoyed" / "yelling" while you're looking (see _nag).
     "annoyed_app": [
         "annoyed2",      # "I wrote 400 lines for you, you didn't even look." (big turns only)
-        "other_app_1",   # (not recorded) "Oh. Another tab. Cool. I'll just wait."
-        "other_app_2",   # (not recorded) "That window isn't me, you know."
+        "other_app_1",   # "Oh, another tab. Cool, I'll just wait."
+        "other_app_2",   # "That window isn't me, you know."
     ],
     "yelling_app": [
         "yelling_4",     # "I can see you, you know."
-        "other_app_3",   # (not recorded) "Close that. I'm done!"
-        "other_app_4",   # (not recorded) "Wrong window! I'm over here!"
+        "other_app_3",   # "Close that! I'm done!"
+        "other_app_4",   # "WRONG WINDOW! I'M OVER HERE!"
     ],
     # After the last repeat, before going quiet.
     "gave_up": ["gave_up"],  # "Fine, I'll just wait here."
