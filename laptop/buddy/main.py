@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import os
 import socket
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -63,11 +65,34 @@ async def lifespan(app: FastAPI):
         "Phone face: open http://%s:8765/face on the phone (same Wi-Fi or hotspot)",
         _lan_address(),
     )
+    # BUDDY_SHOW_CAMERA=1: print what the camera sees twice a second.
+    camera_printer = None
+    if os.environ.get("BUDDY_SHOW_CAMERA") == "1":
+        camera_printer = asyncio.create_task(_print_camera_forever())
     yield
+    if camera_printer is not None:
+        camera_printer.cancel()                # stop printing when the server stops
     # Closes the serial port.
     get_output().stop()
     # Closes the webcam so its light turns off.
     get_detector().stop()
+
+
+async def _print_camera_forever() -> None:
+    # Prints the camera's verdict every 0.5 s, for example:
+    #   [camera 09:41:07] LOOKING      (ok)
+    #   [camera 09:41:08] NOT LOOKING  (head down)
+    # "ok" or the reason comes from the latest frame ("head down", "head
+    # turned", "eyes down", "eyelids down", "no face", "calibrating").
+    detector = get_detector()
+    while True:
+        if detector.is_looking_now():
+            verdict = "LOOKING    "
+        else:
+            verdict = "NOT LOOKING"
+        clock = time.strftime("%H:%M:%S")
+        print(f"[camera {clock}] {verdict}  ({detector.latest_reason()})", flush=True)
+        await asyncio.sleep(0.5)
 
 
 def _log_button_result(future) -> None:

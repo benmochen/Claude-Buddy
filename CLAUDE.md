@@ -105,6 +105,7 @@ button presses.
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port;
   `BUDDY_CLAUDE_APP_ID=com.apple.Terminal` changes the app a tap brings forward (default com.apple.Terminal);
   `BUDDY_AUDIO=laptop` plays the voice on the laptop even when the phone has sound on.
+  `BUDDY_SHOW_CAMERA=1` prints `[camera HH:MM:SS] LOOKING / NOT LOOKING (reason)` every 0.5 s.
   Plug the board in BEFORE starting the server (the port is only looked for at startup).
   Look at the screen while it starts (calibration). Recalibrate: `curl -X POST http://127.0.0.1:8765/calibrate`
 - Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude` (or `tmux attach -t claude`), then
