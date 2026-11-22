@@ -149,8 +149,18 @@ button presses.
      type REDO_AFTER_UNDO_MESSAGE (or REDO_MESSAGE if no files changed) into tmux `claude`.
      Ignored in WORKING (`busy`, not recorded) and NEEDS_YOU (typing would pick a menu option);
      IDLE -> `nothing_to_undo`. tmux failure -> DONE "REDO FAILED", files stay undone.
-  Firmware: jolt = distance of the reading from a slow running average; > 700 mg = slap; 1.5 s
+  Firmware: jolt = distance of the reading from a slow running average; > 700 mg = a tap. The
+  board then waits 0.8 s for a second knock (so a single tap is reported 0.8 s late), then 1 s
   cooldown so the spring wobble is not counted again.
+- Knock-knock (two taps about HALF A SECOND apart; `KNOCK:<mg>` from the STM32, or POST /knock):
+  opens ANOTHER Claude chat: `tmux new-window -t claude: -c <project> claude` (TmuxTyper.
+  open_new_chat). The current chat keeps running in its window (Ctrl+b then n / p to switch).
+  Terminal comes to the front; stops nagging (IDLE). Allowed in any state. Voice `new_chat` (not
+  recorded yet). Firmware (accel.c): second jolt >= 1500 mg AND >= 35 % of the first tap, between
+  0.25 and 0.8 s after it. Measured Nov 21 on the toy: a single tap's spring bounce comes back at
+  0.15-0.2 s at up to 60 % of the tap, then stays < ~900 mg; a deliberate second knock at
+  0.25-0.4 s was 3000-3800 mg. A FAST double tap (0.15-0.2 s) looks like the bounce and can't be
+  detected. Replayed on the recordings: 3/3 knocks and 8/8 single taps sorted correctly.
 - Other voice moments: Stop -> `yay`; Notification (permission) -> `needs_you` right away.
 - Button (POST /button, or `BTN` from the STM32; the physical button is gone): old redo path,
   only in DONE, ANNOYED, YELLING, never while nagging about NEEDS_YOU. Plays `slam`, types
@@ -237,7 +247,7 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
 - laptop -> board: `F:IDLE` and `F:WORK` (normal), `F:DONE` (happy), `F:NEED` (sad),
   `F:MAD` (ouch), `T:<text>` (accepted, not shown: the TFT has no text yet), `PING` (board replies `PONG`),
   `S:<clip>` (play voice clip), `S:STOP` (still in the firmware, no longer sent by the laptop)
-- board -> laptop: `BTN` (undo button; the board also shows `> <` for 1.5 s on its own),
+- board -> laptop: `KNOCK:<mg>` (knock-knock), `BTN` (undo button; the board also shows `> <` for 1.5 s on its own),
   `SLAP:<mg>` (head slapped, strength in milli-g; also `> <`), `ERR:ACCEL` (accelerometer
   missing at startup, logged as a warning)
 - State to face mapping lives in `FACE_FOR_STATE` in serial_output.py:
@@ -278,7 +288,9 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
   lighting or seating on demo day: recalibrate, maybe retune.
 - Camera light is on the whole time the server runs.
 - Shortcut: spoken lines are fixed text.
-- Only one Claude Code session supported (session_id ignored, two sessions would clash).
+- Only one Claude Code session supported (session_id ignored): after a knock-knock opens a second
+  chat, both chats' hooks drive the same buddy state (for example the old chat finishing makes it
+  happy while you work in the new one). The redo tap types into the tmux window in front.
 - Shortcut: tmux session name `claude` is hardcoded in dependencies.py.
 - State is in memory; restart resets to IDLE.
 - No automated tests yet.

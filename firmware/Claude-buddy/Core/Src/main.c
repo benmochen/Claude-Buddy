@@ -164,12 +164,16 @@ int main(void)
     HAL_GPIO_WritePin(BTN_LED_GPIO_Port, BTN_LED_Pin,
                       Face_GetMood() == FACE_OUCH ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
-    /* Slap on the head (accelerometer): "> <" right away, and tell the
-     * laptop, which brings the Claude Code window back to the front. */
-    uint16_t slap = Accel_CheckSlap(now);
-    if (slap) {
+    /* Tap on the head (accelerometer): one tap -> "SLAP", knock-knock ->
+     * "KNOCK". The laptop decides what each one does. */
+    uint16_t strength = 0;
+    AccelEvent tap = Accel_Check(now, &strength);
+    if (tap == ACCEL_SLAP) {
       Face_React(FACE_OUCH, OUCH_REACT_MS);
-      Link_SendSlap(slap);
+      Link_SendSlap(strength);
+    } else if (tap == ACCEL_KNOCK) {
+      Face_React(FACE_OUCH, OUCH_REACT_MS);
+      Link_SendKnock(strength);
     }
 
     /* Blue USER button cycles moods: normal -> happy -> sad -> ouch. */

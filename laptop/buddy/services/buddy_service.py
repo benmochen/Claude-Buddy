@@ -84,6 +84,8 @@ SOUND_GROUPS: Dict[str, List[str]] = {
     "nothing_to_undo": ["nothing_to_undo"],  # "Nothing to undo. I didn't touch anything."
     # A head slap while Claude is still working.
     "busy": ["busy_1", "busy_2"],  # (not recorded) "I'm still working. Hold on."
+    # A knock-knock opened a second chat.
+    "new_chat": ["new_chat"],  # (not recorded) "Another one? Fine. New chat."
 }
 
 # "I wrote 400 lines for you" sounds silly after a 3-line answer. Lines listed
@@ -314,6 +316,24 @@ class BuddyService:
             self._say("nothing_to_undo")
             return "ignored: Claude hasn't answered anything yet"
         return await self._undo_and_redo()
+
+    async def on_knock(self) -> str:
+        # Knock-knock on the head: open ANOTHER Claude chat in a new tmux
+        # window. The current chat is left alone (still running, still has
+        # its conversation). Allowed any time, even while Claude works: that's
+        # a good moment to start something else in parallel.
+        self._reaction_id += 1                 # phone face shows "> <" for a moment
+        # Bring Terminal forward so you see the new chat.
+        await asyncio.to_thread(self._focuser.focus)
+        if not await asyncio.to_thread(self._claude_input.open_new_chat):
+            self._say("redo_failed")
+            return "failed: could not open a tmux window in session 'claude' (see server log)"
+        # Stop nagging about the old chat: you're clearly at the desk.
+        if self._nagging:
+            self._stop_watching()
+            self._set_state(BuddyState.IDLE, self._messages.get(BuddyState.IDLE), "knock")
+        self._say("new_chat")
+        return "opened a new chat"
 
     async def _forgive(self) -> str:
         # A tap while it's nagging: the only thing that stops the yelling.

@@ -15,9 +15,17 @@
  * Returns 1 if the accelerometer answered, 0 if not (slaps then never fire). */
 uint8_t Accel_Init(void);
 
+/* What Accel_Check() found. */
+typedef enum {
+  ACCEL_NOTHING = 0,   /* no new tap (or still waiting to see if a 2nd knock comes) */
+  ACCEL_SLAP,          /* one tap                                                   */
+  ACCEL_KNOCK          /* knock-knock: two taps about half a second apart          */
+} AccelEvent;
+
 /* Call every main-loop pass with HAL_GetTick(). Reads a new sample every few
- * milliseconds. Returns the strength of a new slap in milli-g (1000 = 1 g),
- * or 0 if there was no new slap. */
-uint16_t Accel_CheckSlap(uint32_t now);
+ * milliseconds. A single tap is reported 0.8 s late (after waiting for a
+ * possible second knock). For SLAP / KNOCK, *strength_mg gets the strength in
+ * milli-g (1000 = 1 g). */
+AccelEvent Accel_Check(uint32_t now, uint16_t *strength_mg);
 
 #endif /* ACCEL_H */

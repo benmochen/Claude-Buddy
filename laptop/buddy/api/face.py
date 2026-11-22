@@ -24,11 +24,14 @@ FACE_PAGE = Path(__file__).parent.parent / "static" / "face.html"
 def _clip_names() -> List[str]:
     # Names of all recorded voice lines, e.g. ["annoyed", "done", ...].
     names: List[str] = []
+    # Reads buddy/sounds/ again on every call, so the phone can download a newly added .mp3 right away.
     for path in sorted(SOUNDS_DIR.glob("*.mp3")):
         names.append(path.stem)
     return names
 
 
+# The phone opens http://<laptop IP>:8765/face (the "Phone face:" log line at startup gives it).
+# Reachable from the phone only with uvicorn --host 0.0.0.0; local_only lets it GET this page.
 @router.get("/face", include_in_schema=False)
 async def face_page() -> FileResponse:
     return FileResponse(FACE_PAGE)
@@ -46,10 +49,12 @@ async def face_state(
     # Only what the eyes and the voice need, nothing else (the phone may be on
     # shared Wi-Fi).
     answer = service.get_face_state()
+    # Adds sound_id (a counter, +1 per order) and sound (clip name, null = stop); the page acts only when sound_id changes.
     answer.update(phone.snapshot())
     return answer
 
 
+# GET, not POST: the phone may only GET (main.py local_only). face.html calls it after the sound-on tap.
 @router.get("/face/sounds")
 async def face_sounds() -> dict:
     # The list of clips, so the page can download them all once in advance.

@@ -100,6 +100,13 @@ void Link_SendSlap(uint16_t strength_mg)
   send_text(msg);
 }
 
+void Link_SendKnock(uint16_t strength_mg)
+{
+  char msg[16];                                      /* "KNOCK:65535\n" fits     */
+  snprintf(msg, sizeof msg, "KNOCK:%u\n", (unsigned)strength_mg);
+  send_text(msg);
+}
+
 void Link_SendLine(const char *text)
 {
   send_text(text);

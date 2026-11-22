@@ -24,3 +24,10 @@ async def slap(service: BuddyService = Depends(get_buddy_service)) -> dict:
     # Fake a slap on the head without the board: brings Claude Code to the front.
     result = await service.on_slap()
     return {"result": result}
+
+
+@router.post("/knock")
+async def knock(service: BuddyService = Depends(get_buddy_service)) -> dict:
+    # Fake a knock-knock without the board: opens another Claude chat in a new tmux window.
+    result = await service.on_knock()
+    return {"result": result}

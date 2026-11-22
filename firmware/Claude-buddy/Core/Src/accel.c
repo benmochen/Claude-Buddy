@@ -7,8 +7,19 @@
  *      just gravity (about 1000 mg pointing down, whatever way the board sits).
  *   3. The difference between the new reading and the baseline is the jolt.
  *      If its size is above SLAP_THRESHOLD_MG, that is a slap.
- *   4. After a slap the head keeps wobbling on the springs for a while, which
- *      would look like more slaps, so further slaps are ignored for COOLDOWN_MS.
+ *   4. Knock-knock: after a tap the board waits KNOCK_WINDOW_END_MS before
+ *      reporting it. A second jolt of at least KNOCK_MIN_MG, and at least
+ *      KNOCK_MIN_RATIO of the first tap, between KNOCK_WINDOW_START_MS and
+ *      KNOCK_WINDOW_END_MS after the first tap = a knock-knock. Otherwise it
+ *      was a single tap (slap).
+ *      Measured on the toy (Nov 21): a single tap's spring bounce comes back
+ *      0.15-0.2 s later at up to 60 % of the tap, then stays under ~900 mg
+ *      after 0.25 s. A deliberate second knock 0.25-0.4 s later was
+ *      3000-3800 mg. A FAST double tap (second tap at 0.15-0.2 s) looks just
+ *      like the spring bounce, so it can't be detected: knock with a beat.
+ *   5. After a slap or knock-knock the head keeps wobbling on the springs for
+ *      a while, which would look like more taps, so taps are ignored for
+ *      COOLDOWN_MS.
  *
  * Tuning: the laptop log shows "SLAP:<strength>" for each slap. If small
  * bumps (typing, a mug on the desk) trigger it, raise SLAP_THRESHOLD_MG.
@@ -33,14 +44,21 @@
 #define I2C_TIMEOUT_MS     5          /* give up on a stuck I2C read after 5 ms            */
 #define SAMPLE_MS          5          /* read a sample every 5 ms (200 per second)         */
 #define SLAP_THRESHOLD_MG  700.0f     /* jolt size that counts as a slap (0.7 g)           */
-#define COOLDOWN_MS        1500       /* ignore the wobbling for 1.5 s after a slap        */
+#define COOLDOWN_MS        1000       /* ignore the wobbling for 1 s after a decision      */
+#define KNOCK_WINDOW_START_MS 250     /* second knock: not before (spring bounce until then) */
+#define KNOCK_WINDOW_END_MS   800     /* second knock: not after; a single tap is reported then */
+#define KNOCK_MIN_MG       1500.0f    /* second knock at least this big (bounce stays < ~900) */
+#define KNOCK_MIN_RATIO    0.35f      /* ...and at least 35 % of the first tap              */
 #define BASELINE_WEIGHT    0.02f      /* how fast the baseline follows (2 % per sample)    */
 
 static uint8_t  ready;                /* 1 = chip found and set up                          */
 static uint8_t  have_baseline;        /* 1 = baseline holds a real reading                  */
 static float    base_x, base_y, base_z;  /* resting acceleration (gravity), milli-g         */
 static uint32_t last_sample;          /* HAL_GetTick() of the last read                     */
-static uint32_t last_slap;            /* HAL_GetTick() of the last slap                     */
+static uint32_t last_event;           /* HAL_GetTick() of the last slap / knock-knock       */
+static uint8_t  waiting;              /* 1 = a tap happened, waiting to see if a 2nd follows */
+static uint32_t first_tap_at;         /* HAL_GetTick() of that first tap                    */
+static float    first_tap_mg;         /* its biggest jolt (milli-g)                         */
 
 /* Write one byte into one register of the chip. Returns 1 on success. */
 static uint8_t write_reg(uint8_t reg, uint8_t value)
@@ -70,14 +88,14 @@ uint8_t Accel_Init(void)
   return 1;
 }
 
-uint16_t Accel_CheckSlap(uint32_t now)
+AccelEvent Accel_Check(uint32_t now, uint16_t *strength_mg)
 {
-  if (!ready) return 0;                           /* no chip: never a slap           */
-  if (now - last_sample < SAMPLE_MS) return 0;    /* too soon for a new sample       */
+  if (!ready) return ACCEL_NOTHING;               /* no chip: never a slap           */
+  if (now - last_sample < SAMPLE_MS) return ACCEL_NOTHING;  /* too soon for a sample */
   last_sample = now;
 
   uint8_t raw[6];
-  if (!read_regs(REG_OUTX_L_XL, raw, 6)) return 0;   /* read failed: try next time  */
+  if (!read_regs(REG_OUTX_L_XL, raw, 6)) return ACCEL_NOTHING;  /* read failed       */
 
   /* Each axis is a signed 16-bit number, low byte first. */
   float x = (int16_t)(raw[0] | (raw[1] << 8)) * MG_PER_LSB;
@@ -87,7 +105,7 @@ uint16_t Accel_CheckSlap(uint32_t now)
   if (!have_baseline) {                           /* very first sample after start   */
     base_x = x; base_y = y; base_z = z;
     have_baseline = 1;
-    return 0;
+    return ACCEL_NOTHING;
   }
 
   /* How far this sample is from rest, as one number (length of the difference). */
@@ -100,8 +118,33 @@ uint16_t Accel_CheckSlap(uint32_t now)
   base_y += (y - base_y) * BASELINE_WEIGHT;
   base_z += (z - base_z) * BASELINE_WEIGHT;
 
-  if (jolt < SLAP_THRESHOLD_MG) return 0;         /* normal small movement           */
-  if (now - last_slap < COOLDOWN_MS) return 0;    /* still wobbling from last slap   */
-  last_slap = now;
-  return jolt > 65535.0f ? 65535 : (uint16_t)jolt;  /* report the strength           */
+  if (waiting) {
+    /* A tap happened: was it the first half of a knock-knock? */
+    uint32_t elapsed = now - first_tap_at;
+    if (elapsed < KNOCK_WINDOW_START_MS) {
+      /* Still the first tap and its spring bounce: remember the biggest jolt. */
+      if (jolt > first_tap_mg) first_tap_mg = jolt;
+      return ACCEL_NOTHING;
+    }
+    if (jolt >= KNOCK_MIN_MG && jolt >= first_tap_mg * KNOCK_MIN_RATIO) {
+      waiting = 0;                                /* second knock: knock-knock       */
+      last_event = now;
+      *strength_mg = jolt > 65535.0f ? 65535 : (uint16_t)jolt;
+      return ACCEL_KNOCK;
+    }
+    if (elapsed > KNOCK_WINDOW_END_MS) {
+      waiting = 0;                                /* no second knock: a single tap   */
+      last_event = now;
+      *strength_mg = first_tap_mg > 65535.0f ? 65535 : (uint16_t)first_tap_mg;
+      return ACCEL_SLAP;
+    }
+    return ACCEL_NOTHING;                         /* keep waiting                    */
+  }
+
+  if (jolt < SLAP_THRESHOLD_MG) return ACCEL_NOTHING;      /* normal small movement  */
+  if (now - last_event < COOLDOWN_MS) return ACCEL_NOTHING; /* still wobbling        */
+  waiting = 1;                                    /* a tap: wait for a second one    */
+  first_tap_at = now;
+  first_tap_mg = jolt;
+  return ACCEL_NOTHING;
 }

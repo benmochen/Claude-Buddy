@@ -75,7 +75,7 @@ _buddy_service = BuddyService(
     speaker=Speaker(quiet=_quiet, phone=_speaker_phone),
     detector=_detector,
     # "claude" must match the name in `tmux new -s claude`.
-    claude_input=TmuxTyper(session="claude"),
+    claude_input=TmuxTyper(session="claude", folder=str(_project_root)),
     # The LCD text per mood, editable from the web page, saved to
     # ~/.config/claude-buddy/messages.json.
     messages=MessageStore(default_config_path()),

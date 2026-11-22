@@ -1,7 +1,8 @@
 # Types text into the Claude Code that runs inside the tmux session,
 # as if you typed it on the keyboard, then presses Enter.
-# Hooks can't start a new Claude turn, so this is how the redo button
-# sends Claude a new prompt.
+# Hooks can't start a new Claude turn, so this is how the redo tap
+# sends Claude a new prompt. open_new_chat() starts a second Claude Code in a
+# new tmux window (knock-knock on the head).
 
 import asyncio
 import logging
@@ -18,9 +19,11 @@ PAUSE_BEFORE_ENTER_SECONDS = 0.5
 
 
 class TmuxTyper:
-    def __init__(self, session: str) -> None:
+    def __init__(self, session: str, folder: str) -> None:
         # Name of the tmux session Claude Code runs in (`tmux new -s claude`).
         self._session = session
+        # The project folder: new chats start there, so they get the hooks.
+        self._folder = folder
 
         # Full path of the tmux program, or None if it isn't installed.
         self._tmux_path = shutil.which("tmux")
@@ -44,6 +47,17 @@ class TmuxTyper:
 
         # Without -l, "Enter" means the Enter key, which submits the prompt.
         return self._run(["send-keys", "-t", self._session, "Enter"])
+
+    def open_new_chat(self) -> bool:
+        # Opens a new window in the tmux session and starts a fresh Claude Code
+        # in it. The current chat keeps running in its own window (switch with
+        # Ctrl+b then n). The new window comes to the front, so the redo tap
+        # types into the chat you're looking at.
+        if self._tmux_path is None:
+            return False
+        # "claude:" (with the colon) = "the session named claude, next free
+        # window number". -c = start in the project folder.
+        return self._run(["new-window", "-t", self._session + ":", "-c", self._folder, "claude"])
 
     def _run(self, tmux_args: List[str]) -> bool:
         # Build the full command as a list: [tmux path, arg1, arg2, ...].

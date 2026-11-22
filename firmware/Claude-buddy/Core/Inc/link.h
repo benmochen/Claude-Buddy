@@ -38,6 +38,9 @@ void Link_SendButton(void);
 /* Tell the laptop the head was slapped, with its strength in milli-g. */
 void Link_SendSlap(uint16_t strength_mg);
 
+/* Tell the laptop the head was knocked twice: sends "KNOCK:<strength_mg>". */
+void Link_SendKnock(uint16_t strength_mg);
+
 /* Send one line of text as it is (a '\n' is added). */
 void Link_SendLine(const char *text);
 

@@ -10,7 +10,7 @@ from buddy.state import BuddyState
 class ConsoleOutput:
     # start() and stop() do nothing here. They exist so main.py can treat
     # ConsoleOutput and SerialOutput the same way.
-    def start(self, on_button, on_slap) -> None:
+    def start(self, on_button, on_slap, on_knock=None) -> None:
         pass
 
     def stop(self) -> None:

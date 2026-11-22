@@ -44,8 +44,13 @@ async def lifespan(app: FastAPI):
         future = asyncio.run_coroutine_threadsafe(get_buddy_service().on_slap(), loop)
         future.add_done_callback(_log_slap_result)
 
-    # Opens the STM32's serial port (if plugged in) and starts listening for BTN and SLAP.
-    get_output().start(on_button=on_board_button, on_slap=on_board_slap)
+    def on_board_knock() -> None:
+        # Same hand-over, for "KNOCK" (knock-knock on the head).
+        future = asyncio.run_coroutine_threadsafe(get_buddy_service().on_knock(), loop)
+        future.add_done_callback(_log_knock_result)
+
+    # Opens the STM32's serial port (if plugged in) and starts listening for BTN, SLAP and KNOCK.
+    get_output().start(on_button=on_board_button, on_slap=on_board_slap, on_knock=on_board_knock)
     # Print the address to type on the phone.
     logging.getLogger(__name__).info(
         "Phone face: open http://%s:8765/face on the phone (same Wi-Fi or hotspot)",
@@ -78,6 +83,14 @@ def _lan_address() -> str:
         return "<laptop address>"           # no network at all
     finally:
         probe.close()
+
+
+def _log_knock_result(future) -> None:
+    # Runs when the knock-knock has been handled ("new chat" or "ignored: ...").
+    try:
+        logging.getLogger(__name__).info("STM32 knock-knock: %s", future.result())
+    except Exception:
+        logging.getLogger(__name__).exception("STM32 knock-knock failed")
 
 
 def _log_slap_result(future) -> None:

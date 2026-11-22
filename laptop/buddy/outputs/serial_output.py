@@ -8,6 +8,7 @@
 #                    T:<text> (status text, max 16 chars)
 #   board -> laptop: BTN (the big undo button was pressed),
 #                    SLAP:<n> (the head was slapped, n = strength in milli-g),
+#                    KNOCK:<n> (knock-knock: two taps about half a second apart),
 #                    ERR:ACCEL (the accelerometer did not start)
 
 import logging
@@ -59,10 +60,12 @@ class SerialOutput:
         self._reader: Optional[threading.Thread] = None
         self._running = False
 
-    def start(self, on_button: Callable[[], None], on_slap: Callable[[], None]) -> None:
+    def start(self, on_button: Callable[[], None], on_slap: Callable[[], None],
+              on_knock: Optional[Callable[[], None]] = None) -> None:
         # Called once when the server starts (main.py lifespan).
         # on_button: function to call when the board sends "BTN".
         # on_slap:   function to call when the board sends "SLAP:<n>".
+        # on_knock:  function to call when the board sends "KNOCK:<n>".
         port_name = self._port_name or find_board_port()
         if port_name is None:
             # Shortcut: no retry. Plug the board in, then restart the server.
@@ -80,7 +83,7 @@ class SerialOutput:
         self._running = True
         # daemon=True: the thread never stops the Python process from exiting.
         self._reader = threading.Thread(
-            target=self._read_loop, args=(on_button, on_slap), daemon=True
+            target=self._read_loop, args=(on_button, on_slap, on_knock), daemon=True
         )
         self._reader.start()
 
@@ -124,7 +127,8 @@ class SerialOutput:
                 self._serial = None
                 self._running = False
 
-    def _read_loop(self, on_button: Callable[[], None], on_slap: Callable[[], None]) -> None:
+    def _read_loop(self, on_button: Callable[[], None], on_slap: Callable[[], None],
+                   on_knock: Optional[Callable[[], None]]) -> None:
         # Runs in its own thread: waits for lines from the board.
         while self._running:
             with self._lock:
@@ -145,6 +149,10 @@ class SerialOutput:
                 # can tune SLAP_THRESHOLD_MG in the firmware's accel.c.
                 logger.info("Head slapped on the STM32 (strength %s mg)", message[5:])
                 on_slap()
+            elif message.startswith("KNOCK:"):
+                logger.info("Knock-knock on the STM32 (strength %s mg)", message[6:])
+                if on_knock is not None:
+                    on_knock()
             elif message.startswith("ERR:"):
                 logger.warning("STM32 reported a problem: %s", message[4:])
             elif message:
