@@ -152,7 +152,7 @@ button presses.
   BIG_TURN_LINES (100) lines that turn (TurnCheckpoint.lines_added(), Edit/Write tools only).
   `gave_up` is no longer used. Phone vs other app (Nov 22): when the camera sees you LOOKING at the
   screen (so the nag is because another app is in front, e.g. Firefox), `annoyed` / `yelling` steps
-  use `annoyed_app` (`other_app_1`, `other_app_2`, `annoyed2` on big turns) / `yelling_app`
+  use `annoyed_app` (`other_app_1`, `other_app_2`, `annoyed_3`, `annoyed2` on big turns) / `yelling_app`
   (`yelling_4`, `other_app_3`, `other_app_4`) instead (no "phone" lines). The phone-or-app choice uses
   detector.is_looking_now() (any not-looking frame in the last 0.5 s = phone), NOT is_distracted()
   (2 s): with the 2 s answer, looking down at the phone mid-nag still played "another tab". Each

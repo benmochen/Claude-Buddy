@@ -35,7 +35,7 @@ SOUND_GROUPS: Dict[str, List[str]] = {
     # Claude just finished.
     "yay": [
         "yay",           # "Okay, I'm done. Come look."
-        "yay_2",         # (not recorded) "Finished. Come look."
+        "yay_2",         # "Yo! I freaking cooked for you! Come look!"
         "yay_3",         # "All done! You can look now!"
     ],
     # Claude needs permission (played right away, and again when nagging).
@@ -50,7 +50,7 @@ SOUND_GROUPS: Dict[str, List[str]] = {
     "annoyed": [
         "annoyed",       # "You're on your phone. That's fine. I'll just wait here."
         "annoyed2",      # "I wrote 400 lines for you, you didn't even look." (big turns only)
-        "annoyed_3",     # (not recorded) "I'll just wait. Again."
+        "annoyed_3",     # "Bro, I cooked! Look!"
         "annoyed_4",     # "Is that phone more interesting than me?"
     ],
     # Last nags: fed up.
@@ -65,6 +65,7 @@ SOUND_GROUPS: Dict[str, List[str]] = {
     # Picked instead of "annoyed" / "yelling" while you're looking (see _nag).
     "annoyed_app": [
         "annoyed2",      # "I wrote 400 lines for you, you didn't even look." (big turns only)
+        "annoyed_3",     # "Bro, I cooked! Look!" (no phone in it, fits both)
         "other_app_1",   # "Oh, another tab. Cool, I'll just wait."
         "other_app_2",   # "That window isn't me, you know."
     ],
