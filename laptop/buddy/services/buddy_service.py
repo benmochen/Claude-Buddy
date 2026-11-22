@@ -152,6 +152,11 @@ VOICE_NAG_GRACE_SECONDS = 7.0
 # No nag line in the first seconds after Claude finished / asked, so "Come
 # look" isn't followed straight away by a guilt trip.
 VOICE_QUIET_AFTER_DONE_SECONDS = 7.0
+# At least this much silence after ANY line ends before the next nag line.
+# The steps are timed start to start (8 s), and the clips are 3-5 s long, so
+# without this the lines came 1-3 s apart. If a newer step's line is due
+# meanwhile, it replaces the waiting one (the voice follows the mood).
+VOICE_GAP_SECONDS = 6.0
 # "Thank you" only plays once you've been locked in (looking at the screen
 # AND Terminal / VS Code in front) this long without a break, and never over
 # a line that's still playing. Dropped if the nagging starts again first.
@@ -566,6 +571,7 @@ class BuddyService:
             watch_started_at = time.monotonic()  # when Claude finished / asked
             away_since = 0.0       # voice: not locked in without a break since, 0 = locked in now
             back_since = 0.0       # voice: locked in without a break since, 0 = not locked in now
+            last_busy_at = 0.0     # voice: last time a line was still playing
 
             while True:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
@@ -589,7 +595,9 @@ class BuddyService:
                     back_since = 0.0
                     if away_since == 0.0:
                         away_since = now
-                if not self._speaker.is_busy():
+                if self._speaker.is_busy():
+                    last_busy_at = now             # silence is counted from the end of a line
+                else:
                     # A "thank you" waiting for you to stay back 1.5 s.
                     if self._pending_thanks is not None and not self._nagging:
                         if back_since > 0.0 and now - back_since >= VOICE_THANKS_GRACE_SECONDS:
@@ -600,7 +608,8 @@ class BuddyService:
                     elif self._pending_nag is not None and self._nagging:
                         away_long_enough = away_since > 0.0 and now - away_since >= VOICE_NAG_GRACE_SECONDS
                         quiet_over = now - watch_started_at >= VOICE_QUIET_AFTER_DONE_SECONDS
-                        if away_long_enough and quiet_over:
+                        gap_over = now - last_busy_at >= VOICE_GAP_SECONDS
+                        if away_long_enough and quiet_over and gap_over:
                             self._speak_nag(self._pending_nag)
                             self._pending_nag = None
 

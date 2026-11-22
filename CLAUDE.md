@@ -188,6 +188,9 @@ button presses.
   - nag line: only after 7 s of being not locked in without a break (VOICE_NAG_GRACE_SECONDS); the
     line waits in _pending_nag (a newer step's line replaces it) and is dropped if you come back.
   - no nag line in the first 7 s after Stop / permission (VOICE_QUIET_AFTER_DONE_SECONDS).
+  - at least 6 s of silence after any line ends before the next nag line (VOICE_GAP_SECONDS):
+    steps are 8 s start to start and clips 3-5 s, so "I finished..." and the first disappointed
+    line came 1-2 s apart at the start of every nagging stretch.
   - "thank you": only after 1.5 s locked in without a break (looking now AND work app in front),
     never over a playing line; dropped if the nagging restarts first (_pending_thanks).
   - Side effect: glancing back and forth (never 7 s away) lets the mood climb to YELLING silently,
