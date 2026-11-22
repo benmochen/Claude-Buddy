@@ -81,10 +81,12 @@
     const HAPPY_BOUNCE_MS = 1200;   // how long ^ ^ bounces after becoming happy
     const OUCH_SHAKE_MS = 900;      // how long > < shakes
     const REACT_MS = 1500;          // how long a slap / button press shows > <
+    // How long each reaction stays before going back to the mood's face.
+    const REACT_MS_FOR = { ouch: 1500, shocked: 1800, hearts: 2500 };
 
     // Which face each buddy state shows.
     const FACE_FOR_STATE = {
-      IDLE: "normal", WORKING: "normal", DONE: "happy",
+      IDLE: "normal", WORKING: "thinking", DONE: "happy",
       NEEDS_YOU: "sad", ANNOYED: "ouch", YELLING: "ouch",
     };
 
@@ -139,10 +141,12 @@
         updateSoundHint();                          // show "Tap for sound" if sound got switched off
         const now = performance.now();
 
-        // A new slap or button press: show > < for a moment.
+        // A new reaction: > < (tap), O O (a tap undid Claude's work) or
+        // hearts (you came back). Shown for a moment, then the mood's face.
         if (lastReactionId !== null && data.reaction_id !== lastReactionId) {
-          reactUntil = now + REACT_MS;
-          setFace("ouch", now);
+          const kind = data.reaction || "ouch";
+          reactUntil = now + (REACT_MS_FOR[kind] || REACT_MS);
+          setFace(kind, now);
         }
         lastReactionId = data.reaction_id;
 
@@ -164,7 +168,8 @@
         lastSoundId = data.sound_id;
 
         // The buddy's state changed: switch faces (unless a reaction is playing).
-        const wanted = FACE_FOR_STATE[data.state] || "normal";
+        // Side-eye wins over the mood: it's watching you before it says anything.
+        const wanted = data.side_eye ? "side_eye" : (FACE_FOR_STATE[data.state] || "normal");
         if (wanted !== baseFace) {
           baseFace = wanted;
           if (!reactUntil) setFace(wanted, now);
@@ -208,6 +213,24 @@
         const eyeY = y + 14;
         ctx.fillRect(x - EYE_W / 2, eyeY - pose.h / 2, EYE_W, pose.h);
         line(x - 20 * m, y - 26, x + 18 * m, y - 42);   // low outside, raised inside
+      } else if (pose.shape === "side_eye") {            // squinted slit + flat lid, looking sideways
+        ctx.fillRect(x - EYE_W / 2 - 4, y - pose.h / 2, EYE_W + 8, pose.h);
+        line(x - 22, y - 18, x + 22, y - 12);           // heavy lid, lower on the side it looks to
+      } else if (pose.shape === "shocked") {             // O: big ring with a small pupil
+        ctx.beginPath();
+        ctx.arc(x, y, pose.h, 0, Math.PI * 2);
+        ctx.closePath();                                 // closed ring: no square end sticking out
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (pose.shape === "heart") {               // filled heart, pose.h = size
+        const sz = pose.h;
+        ctx.beginPath();
+        ctx.moveTo(x, y + 0.9 * sz);                                          // bottom tip
+        ctx.bezierCurveTo(x - 1.3 * sz, y + 0.1 * sz, x - 0.8 * sz, y - 1.0 * sz, x, y - 0.4 * sz);  // left lobe
+        ctx.bezierCurveTo(x + 0.8 * sz, y - 1.0 * sz, x + 1.3 * sz, y + 0.1 * sz, x, y + 0.9 * sz);  // right lobe
+        ctx.fill();
       }
     }
 
@@ -242,6 +265,24 @@
         // Shake left and right every 50 ms for the first 0.9 s.
         const shake = t < OUCH_SHAKE_MS ? (Math.floor(t / 50) % 2 ? 4 : -4) : 0;
         return { shape: "ouch", dx: shake, dy: 0, h: 0 };
+      }
+      if (face === "thinking") {
+        // Claude is working: eyes look up and sweep slowly left to right, like
+        // reading, then jump back. Smaller eyes, still blinking.
+        const sweep = (t % 1800) / 1800;                 // 0 -> 1 every 1.8 s
+        return { shape: "rect", dx: -10 + sweep * 20, dy: -16, h: blinkHeight(now, EYE_H * 0.7) };
+      }
+      if (face === "side_eye") {
+        // Slide sideways over 0.3 s into a squint, then hold, watching you.
+        return { shape: "side_eye", dx: Math.min(t / 15, 20), dy: 4, h: blinkHeight(now, 18) };
+      }
+      if (face === "shocked") {
+        // Pop open: the ring grows from 14 to 26 over 0.15 s.
+        return { shape: "shocked", dx: 0, dy: 0, h: Math.min(14 + t / 12, 26) };
+      }
+      if (face === "hearts") {
+        // Hearts pulse gently (size 26 +- 3).
+        return { shape: "heart", dx: 0, dy: 0, h: 26 + 3 * Math.sin(t / 120) };
       }
       // Normal: now and then glance left or right, and blink.
       if (now >= nextGlance) {

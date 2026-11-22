@@ -157,6 +157,9 @@ VOICE_QUIET_AFTER_DONE_SECONDS = 7.0
 # without this the lines came 1-3 s apart. If a newer step's line is due
 # meanwhile, it replaces the waiting one (the voice follows the mood).
 VOICE_GAP_SECONDS = 6.0
+# Side-eye on the phone after you've stopped working this long (continuous),
+# until it says its first line. Short, so it visibly notices you right away.
+SIDE_EYE_AFTER_SECONDS = 1.0
 # "Thank you" only plays once you've been locked in (looking at the screen
 # AND Terminal / VS Code in front) this long without a break, and never over
 # a line that's still playing. Dropped if the nagging starts again first.
@@ -229,6 +232,13 @@ class BuddyService:
         # Goes up by one on every slap and every undo-button press, so the phone
         # face can show "> <" for a moment (it watches for this number to change).
         self._reaction_id = 0
+        # Which reaction the phone shows when reaction_id goes up: "ouch"
+        # (> <, taps), "shocked" (O O, a tap undid Claude's work) or "hearts"
+        # (thank you, you came back).
+        self._reaction_kind = "ouch"
+        # True while it's watching you with side-eye: you stopped working (1 s+)
+        # but it hasn't said anything yet this time. The phone shows side-eye.
+        self._side_eye = False
         # Who caused the last change: "hook", "nag", "button" or "manual" (the web page).
         self._source = "startup"
         # time.monotonic() is a clock that never jumps backwards
@@ -312,7 +322,7 @@ class BuddyService:
 
     async def on_button_pressed(self) -> str:
         # Returns a short result string for the curl reply and the log.
-        self._reaction_id += 1                 # phone face shows "> <" for a moment
+        self._react("ouch")                    # phone face shows "> <" for a moment
         if self._state not in REDO_ALLOWED_STATES:
             logger.info("Button ignored in state %s", self._state.value)
             return f"ignored: state is {self._state.value}"
@@ -353,14 +363,14 @@ class BuddyService:
         #      has finished: "I don't like this answer". Undo the files Claude
         #      changed in its last turn, then tell Claude to redo it.
         if self._question_is_open():
-            self._reaction_id += 1             # phone face shows "> <" for a moment
+            self._react("ouch")                # phone face shows "> <" for a moment
             return await self._answer_yes()
 
         if self._state == BuddyState.WORKING:
             logger.info("Tap ignored: Claude is working")
             return "ignored: Claude is still working"
 
-        self._reaction_id += 1                 # phone face shows "> <" for a moment
+        self._react("ouch")                    # phone face shows "> <" for a moment
 
         if self._nagging:
             return await self._forgive()
@@ -384,7 +394,7 @@ class BuddyService:
         # window. The current chat is left alone (still running, still has
         # its conversation). Allowed any time, even while Claude works: that's
         # a good moment to start something else in parallel.
-        self._reaction_id += 1                 # phone face shows "> <" for a moment
+        self._react("ouch")                    # phone face shows "> <" for a moment
         if self._question_is_open():
             return await self._answer_yes()
         return await self._open_new_chat()
@@ -440,6 +450,7 @@ class BuddyService:
             waiting_for = BuddyState.DONE
         # Says thanks (cuts off the nag line) and goes back to DONE / NEEDS_YOU.
         self._thank_and_settle(waiting_for, yelled, "slap")
+        self._react("hearts")                     # you came back
         # Start watching again from scratch: look away again and it starts
         # over from the first line.
         self._start_watching(waiting_for)
@@ -454,6 +465,7 @@ class BuddyService:
         restored = 0
         if self._checkpoint.file_count() > 0:
             restored = self._checkpoint.undo()
+        self._react("shocked")                    # O O: it just threw away Claude's work
         # "Ow! Okay, I'll do it again, like always." / "Rude! Redoing it." ...
         self._say("slam")
         self._set_state(BuddyState.WORKING, "redoing...", "slap")
@@ -499,10 +511,20 @@ class BuddyService:
 
     # ---- Called by the status route ----
 
+    def _react(self, kind: str) -> None:
+        # Makes the phone face play a short reaction: "ouch", "shocked" or "hearts".
+        self._reaction_id += 1
+        self._reaction_kind = kind
+
     def get_face_state(self) -> dict:
         # The little the phone face needs. Kept separate from get_status() so
         # devices on the network see only the mood, not the camera or messages.
-        answer = {"state": self._state, "reaction_id": self._reaction_id}
+        answer = {
+            "state": self._state,
+            "reaction_id": self._reaction_id,     # goes up on every reaction
+            "reaction": self._reaction_kind,      # which one: ouch / shocked / hearts
+            "side_eye": self._side_eye,           # watching you before it speaks
+        }
         # While asking: the question and the whole seconds left (4, 3, 2, 1).
         left = self._ask_until - time.monotonic()
         if self._asking is not None and left > 0:
@@ -552,6 +574,7 @@ class BuddyService:
         self._waiting_for = None
         self._pending_nag = None                 # forget lines still waiting
         self._pending_thanks = None
+        self._side_eye = False
 
     async def _watch(self, waiting_state: BuddyState) -> None:
         # waiting_state: DONE or NEEDS_YOU, which picks the lines.
@@ -576,6 +599,7 @@ class BuddyService:
             away_since = 0.0       # voice: not locked in without a break since, 0 = locked in now
             back_since = 0.0       # voice: locked in without a break since, 0 = not locked in now
             last_busy_at = 0.0     # voice: last time a line was still playing
+            spoke_this_stretch = False  # a nag line was said since the nagging started
 
             while True:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
@@ -602,10 +626,11 @@ class BuddyService:
                 if self._speaker.is_busy():
                     last_busy_at = now             # silence is counted from the end of a line
                 else:
-                    # A "thank you" waiting for you to stay back 1.5 s.
+                    # A "thank you" waiting for you to stay back a moment.
                     if self._pending_thanks is not None and not self._nagging:
                         if back_since > 0.0 and now - back_since >= VOICE_THANKS_GRACE_SECONDS:
                             self._say(self._pending_thanks)
+                            self._react("hearts")       # heart eyes with the thank you
                             self._pending_thanks = None
                     # A nag line waiting for 4 s of you being away without a
                     # break (and never in the first 4 s after Claude finished).
@@ -616,6 +641,13 @@ class BuddyService:
                         if away_long_enough and quiet_over and gap_over:
                             self._speak_nag(self._pending_nag)
                             self._pending_nag = None
+                            spoke_this_stretch = True
+
+                # Side-eye on the phone: you've stopped working for 1 s+ (no
+                # flicker on camera noise) but it hasn't said anything yet this
+                # time. Once it speaks, the face switches to the nag mood.
+                away_a_moment = away_since > 0.0 and now - away_since >= SIDE_EYE_AFTER_SECONDS
+                self._side_eye = away_a_moment and (not self._nagging or not spoke_this_stretch)
 
                 if self._nagging:
                     # Back for real: looking at the screen AND the work app in
@@ -643,6 +675,7 @@ class BuddyService:
                     self._nagging = True
                     self._yelled = False
                     self._pending_thanks = None        # leaving again: no late "thank you"
+                    spoke_this_stretch = False
                     nag_started_at = now
                     next_step = 0
                     logger.info("Not locked in, starting to nag")

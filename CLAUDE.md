@@ -43,8 +43,12 @@ button presses.
   - `buddy/static/`: the mood page, served at http://127.0.0.1:8765/
   - `buddy/api/face.py` + `buddy/static/face.html`: the phone face (the TFT broke). GET /face is
     the page (canvas eyes, same drawing as firmware face.c, eyes at the screen edges); it polls
-    GET /face/state ({state, reaction_id, sound_id, sound}) every 0.3 s. reaction_id goes up on
-    each slap and button press, and the page shows `> <` for 1.5 s. The page is also the speaker:
+    GET /face/state ({state, reaction_id, reaction, side_eye, question, sound_id, sound}) every 0.3 s.
+    Eyes (Nov 22): normal (IDLE), thinking (WORKING: smaller, up, sweeping like reading), happy ^ ^
+    (DONE), sad (NEEDS_YOU), ouch > < (ANNOYED/YELLING); side_eye (squint, overrides the mood: you
+    stopped working 1 s+ and it hasn't spoken yet this stretch, SIDE_EYE_AFTER_SECONDS); reactions
+    by `reaction`: ouch (taps, knock), shocked O O (a tap undid Claude's work), hearts (thank you).
+    reaction_id goes up on each reaction; the page shows it 1.5-2.5 s. The page is also the speaker:
     "Tap for sound" until tapped once (phones block sound without a tap), then it polls with
     `?audio=1` and plays /face/sounds/<sound>.mp3 whenever sound_id changes (sound null = stop).
     GET /face/sounds lists the clips (the page preloads them).
