@@ -20,7 +20,11 @@ button presses.
 
 ## Repo layout
 
-- `.claude/settings.json`: HTTP hooks (UserPromptSubmit, Stop, Notification with
+- `.claude/buddy-hooks.json` (NOT settings.json, Nov 22): HTTP hooks, loaded only by a chat started
+  with `claude --settings .claude/buddy-hooks.json` (knock-knock chats start that way). In
+  settings.json every Claude chat in the folder fired them, including the VS Code chat used for
+  building: it set WORKING (taps ignored), nagged after its replies, and a tap undid ITS edits.
+  Hooks: (UserPromptSubmit, Stop, Notification with
   matcher `permission_prompt` only, PreToolUse with matcher `Edit|Write|MultiEdit|NotebookEdit`,
   PostToolUse for every tool) posting to `http://127.0.0.1:8765/hooks/...`
 - `laptop/` (Python, FastAPI, run from this folder)
@@ -103,13 +107,14 @@ button presses.
   `BUDDY_AUDIO=laptop` plays the voice on the laptop even when the phone has sound on.
   Plug the board in BEFORE starting the server (the port is only looked for at startup).
   Look at the screen while it starts (calibration). Recalibrate: `curl -X POST http://127.0.0.1:8765/calibrate`
-- Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude`, then `claude` inside it
-  (tmux is needed for the redo button; hooks only fire when Claude Code starts in the
-  folder containing `.claude/settings.json`; restart Claude Code after editing that file)
+- Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude` (or `tmux attach -t claude`), then
+  `claude --settings .claude/buddy-hooks.json` inside it (tmux session MUST be named `claude`:
+  a bare `tmux` makes session `1` and taps/knocks go to the hidden `claude` one; only chats started
+  with --settings drive the buddy; restart that chat after editing buddy-hooks.json)
 - Fake button press: `curl -X POST http://127.0.0.1:8765/button`
 - Fake head slap: `curl -X POST http://127.0.0.1:8765/slap`
-- Every Claude Code session opened in this folder fires the hooks, including the
-  VS Code chat used for building. Use `BUDDY_QUIET=1` while building.
+- Plain `claude` (or the VS Code chat) in this folder fires NO hooks, so building doesn't disturb
+  the buddy.
 - IMPORTANT: hooks, `say`, the serial port and tmux all need the user's Mac. A cloud
   Claude Code session can edit this repo but cannot test any of that. Testing happens
   on the Mac after `git pull`.

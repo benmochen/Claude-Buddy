@@ -57,7 +57,12 @@ class TmuxTyper:
             return False
         # "claude:" (with the colon) = "the session named claude, next free
         # window number". -c = start in the project folder.
-        return self._run(["new-window", "-t", self._session + ":", "-c", self._folder, "claude"])
+        # --settings loads the buddy's hooks for this chat only (see CLAUDE.md:
+        # the hooks are not in .claude/settings.json, or every Claude chat in
+        # the folder, like the VS Code one, would drive the buddy).
+        hooks_file = self._folder + "/.claude/buddy-hooks.json"
+        return self._run(["new-window", "-t", self._session + ":", "-c", self._folder,
+                          "claude", "--settings", hooks_file])
 
     def _run(self, tmux_args: List[str]) -> bool:
         # Build the full command as a list: [tmux path, arg1, arg2, ...].
