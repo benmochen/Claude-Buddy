@@ -132,8 +132,10 @@ button presses.
   you're not locked in, then nags: after DONE: ANNOYED `done` (0 s), `annoyed` (8 s), another
   `annoyed` (16 s), YELLING `yelling` (24 s), then a `yelling` line every 12 s FOREVER. After
   NEEDS_YOU: `needs_you` (0 s), `yelling` (8 s), same repeats. Never starts a line while one is
-  playing. Coming back yourself does NOT stop it (Ben's choice, Nov 21): only a tap, a new
-  prompt, or answering the permission prompt (PostToolUse -> WORKING) stops it.
+  playing. It stops when you're locked in again (looking at the screen AND Terminal / VS Code in
+  front; the current line finishes first, then `thanks_finally` if it yelled, else `thanks`), on a
+  tap, a new prompt, or when the permission prompt is answered (PostToolUse -> WORKING). Only
+  looking back, or only switching back to Terminal, is not enough.
   Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS; lines: SOUND_GROUPS (comments give each clip's
   actual words). `annoyed2` ("I wrote 400 lines for you") only plays when Claude wrote at least
   BIG_TURN_LINES (100) lines that turn (TurnCheckpoint.lines_added(), Edit/Write tools only).
@@ -290,7 +292,8 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
   folder are never saved or restored.
 - Shortcut: a tap focuses the whole Terminal app, not the tmux window running Claude; with
   several Terminal windows, macOS shows the last used one.
-- Yelling never stops on its own: if you leave the desk it yells every 12 s until a tap or a prompt.
+- Yelling never gives up: if you leave the desk it yells every 12 s until you're back and locked in,
+  a tap, or a prompt.
 - Shortcut: `T:` status text is sent but not shown on the TFT.
 - `firmware/Claude-buddy/Debug/` (build output, about 20 MB) is committed; should be gitignored.
 - Production version would: keep state per session_id, require a token header on hooks.

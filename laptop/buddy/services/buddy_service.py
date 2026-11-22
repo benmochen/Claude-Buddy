@@ -320,15 +320,10 @@ class BuddyService:
         waiting_for = self._waiting_for
         yelled = self._yelled
         await asyncio.to_thread(self._focuser.focus)    # work window to the front
-        # After yelling, a fed-up "Finally, thank you."; after the early nags,
-        # a lighter "Thank you." / "There you are." (cuts off the nag line).
-        if yelled:
-            self._say("thanks_finally")
-        else:
-            self._say("thanks")
         if waiting_for is None:
             waiting_for = BuddyState.DONE
-        self._set_state(waiting_for, self._messages.get(waiting_for), "slap")
+        # Says thanks (cuts off the nag line) and goes back to DONE / NEEDS_YOU.
+        self._thank_and_settle(waiting_for, yelled, "slap")
         # Start watching again from scratch: look away again and it starts
         # over from the first line.
         self._start_watching(waiting_for)
@@ -437,9 +432,10 @@ class BuddyService:
         #   - Not nagging yet: wait until you're "not locked in": the camera
         #     says you're looking away, or another app than Terminal / VS Code
         #     has been in front for 2 s.
-        #   - Nagging: escalate, then yell every 12 s forever. Looking back
-        #     does NOT stop it: only a tap on the buddy (on_slap -> _forgive),
-        #     a new prompt, or answering the permission prompt.
+        #   - Nagging: escalate, then yell every 12 s forever. It stops when
+        #     you're locked in again (looking at the screen AND Terminal /
+        #     VS Code in front), on a tap (on_slap -> _forgive), a new prompt,
+        #     or when the permission prompt is answered.
         if waiting_state == BuddyState.NEEDS_YOU:
             steps = NEEDS_YOU_STEPS
         else:
@@ -454,16 +450,29 @@ class BuddyService:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
                 now = time.monotonic()
 
+                # Is the work app (Terminal / VS Code) in front? Asked in a
+                # thread because it runs two small macOS commands.
+                work_in_front = await asyncio.to_thread(self._focuser.is_in_front)
+                looking = not self._detector.is_distracted()
+
+                if self._nagging:
+                    # Back for real: looking at the screen AND the work app in
+                    # front. Let the line playing finish, then calm down.
+                    if looking and work_in_front:
+                        if self._speaker.is_busy():
+                            continue
+                        logger.info("Locked in again, calming down")
+                        self._calm_down(waiting_state)
+                        other_app_since = 0.0
+                        continue
+
                 if not self._nagging:
-                    # Is the work app (Terminal / VS Code) in front? Asked in a
-                    # thread because it runs two small macOS commands.
-                    work_in_front = await asyncio.to_thread(self._focuser.is_in_front)
                     if work_in_front:
                         other_app_since = 0.0
                     elif other_app_since == 0.0:
                         other_app_since = now
                     in_other_app = other_app_since > 0.0 and now - other_app_since >= OTHER_APP_GRACE_SECONDS
-                    if not self._detector.is_distracted() and not in_other_app:
+                    if looking and not in_other_app:
                         continue                  # locked in: nothing to say
                     # Not locked in. Wait while a line is still playing (for
                     # example "yay" right after Claude finished).
@@ -502,6 +511,21 @@ class BuddyService:
             # Anything else is a real bug. Log it with the full traceback
             # instead of letting the background task die silently.
             logger.exception("Watch loop crashed")
+
+    def _calm_down(self, waiting_state: BuddyState) -> None:
+        # Called by the watch loop when you're locked in again while it nags.
+        self._thank_and_settle(waiting_state, self._yelled, "nag")
+        self._nagging = False
+        self._yelled = False
+
+    def _thank_and_settle(self, waiting_state: BuddyState, yelled: bool, source: str) -> None:
+        # After yelling, a fed-up "Finally, thank you."; after the early nags,
+        # a lighter "Thank you." / "There you are.". Then back to DONE / NEEDS_YOU.
+        if yelled:
+            self._say("thanks_finally")
+        else:
+            self._say("thanks")
+        self._set_state(waiting_state, self._messages.get(waiting_state), source)
 
     def _nag(self, step: EscalationStep) -> None:
         self._set_state(step.state, step.lcd_text, "nag")
