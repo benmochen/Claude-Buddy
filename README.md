@@ -1,3 +1,8 @@
+
+<img width="1984" height="2126" alt="Gemini_Generated_Image_ojk9kxojk9kxojk9" src="https://github.com/user-attachments/assets/65aaa3f8-13a3-49ca-a1d7-1f99596f39b4" />
+
+
+
 # Claude Buddy
 
 A little Claude mascot that sits on your desk and keeps you honest while Claude Code works.
