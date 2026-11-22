@@ -1,34 +1,275 @@
 <!doctype html>
-<!-- The buddy's face, for a phone placed in the toy. Open
-     http://<laptop IP>:8765/face on the phone (same Wi-Fi as the laptop). -->
+<!--
+  The buddy's eyes, shown on a phone mounted in the figurine.
+  Open http://<laptop address>:8765/face on the phone (the server prints the
+  address when it starts). The page asks the laptop for the mood 3 times a
+  second (GET /face/state) and draws the matching eyes.
+
+  The drawing is the same as the old TFT firmware (face.c): an imaginary
+  320 x 240 screen, scaled up to fill the phone. Moods:
+    IDLE, WORKING      -> normal eyes (blinks, glances left/right)
+    DONE               -> happy ^ ^ (bounces)
+    NEEDS_YOU          -> sad, with slanted brows
+    ANNOYED, YELLING   -> ouch > < (shakes)
+  A slap or the undo button also shows > < for 1.5 s (reaction_id changes).
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- viewport-fit=cover: draw under the notch and rounded corners too. -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <!-- "Add to Home Screen" on iPhone opens it full screen, without Safari's bars. -->
+  <!-- Fit the phone screen, no zooming by double tap. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <!-- Full screen when added to the iPhone home screen. -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#d97757">
-  <title>Buddy face</title>
+  <meta name="theme-color" content="#FF3C00">
+  <title>Buddy Face</title>
   <style>
-    /* Orange everywhere, no scrolling, no text selection or tap highlight. */
-    html, body {
-      margin: 0;
-      height: 100%;
-      background: #d97757;
-      overflow: hidden;
-      touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
+    /* The whole page is orange, no scrollbars, no margins. */
+    html, body { margin: 0; height: 100%; background: #FF3C00; overflow: hidden; }
+    /* The canvas covers the whole screen. */
     canvas { display: block; width: 100vw; height: 100vh; }
+    /* Small grey dot in a corner while the laptop can't be reached. */
+    #offline {
+      position: fixed; right: 12px; bottom: 12px; width: 14px; height: 14px;
+      border-radius: 50%; background: #555; display: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="face"></canvas>
-  <script src="/static/face.js"></script>
+  <div id="offline" title="Can't reach the laptop"></div>
+  <script>
+    // ---- Look (same numbers as the firmware's face.c) ----
+    const VIRTUAL_W = 320;          // the imaginary screen we draw on
+    const VIRTUAL_H = 240;
+    const BG = "#FF3C00";           // bright orange background
+    const EYE = "#000000";          // black eyes
+    const EYE_W = 28;               // normal eye width
+    const EYE_H = 64;               // normal eye height
+    const SAD_EYE_H = 40;           // smaller eyes when sad
+    const STROKE = 10;              // line thickness for ^ ^, > < and brows
+    const BOX_W = 96;               // each eye sits in a 96 px wide box at a screen edge
+    const CY = VIRTUAL_H / 2;                   // both eyes are vertically centred
+    // Move the eyes this much closer together than "at the screen edges".
+    // Each eye moves in by half of it. Change and reload the page to adjust.
+    const EYES_CLOSER_CM = 5;
+    // Recent iPhones show about 60 CSS pixels per real centimetre
+    // (around 153 per inch). Approximate, but close for all current iPhones.
+    const CSS_PX_PER_CM = 60;
+
+    // ---- Timing ----
+    const POLL_MS = 300;            // ask the laptop for the mood this often
+    const HAPPY_BOUNCE_MS = 1200;   // how long ^ ^ bounces after becoming happy
+    const OUCH_SHAKE_MS = 900;      // how long > < shakes
+    const REACT_MS = 1500;          // how long a slap / button press shows > <
+
+    // Which face each buddy state shows.
+    const FACE_FOR_STATE = {
+      IDLE: "normal", WORKING: "normal", DONE: "happy",
+      NEEDS_YOU: "sad", ANNOYED: "ouch", YELLING: "ouch",
+    };
+
+    const canvas = document.getElementById("face");
+    const ctx = canvas.getContext("2d");
+    const offlineDot = document.getElementById("offline");
+
+    // ---- Face state ----
+    let baseFace = "normal";        // the face for the buddy's current state
+    let face = "normal";            // the face on screen (can be a short reaction)
+    let faceStart = performance.now();  // when the current face started (for animations)
+    let reactUntil = 0;             // end time of a > < reaction, 0 = none
+    let lastReactionId = null;      // reaction_id from the laptop, to spot new slaps
+    let nextBlink = faceStart + 1000 + Math.random() * 2000;  // when the next blink starts
+    let blinkStart = -1;            // when the current blink started, -1 = not blinking
+    let lookX = 0;                  // current sideways glance offset
+    let lookTarget = 0;             // where the glance is moving to
+    let nextGlance = faceStart + 1500;  // when to pick a new glance direction
+
+    function setFace(newFace, now) {
+      // Switch to a new face and restart its animation.
+      face = newFace;
+      faceStart = now;
+      blinkStart = -1;
+      nextBlink = now + 1000 + Math.random() * 2000;
+      lookTarget = 0;
+      nextGlance = now + 1500;
+    }
+
+    // ---- Talking to the laptop ----
+    async function poll() {
+      try {
+        // cache: "no-store" makes sure the phone never shows an old answer.
+        const response = await fetch("/face/state", { cache: "no-store" });
+        if (!response.ok) throw new Error("status " + response.status);
+        const data = await response.json();
+        offlineDot.style.display = "none";          // connected: hide the grey dot
+        const now = performance.now();
+
+        // A new slap or button press: show > < for a moment.
+        if (lastReactionId !== null && data.reaction_id !== lastReactionId) {
+          reactUntil = now + REACT_MS;
+          setFace("ouch", now);
+        }
+        lastReactionId = data.reaction_id;
+
+        // The buddy's state changed: switch faces (unless a reaction is playing).
+        const wanted = FACE_FOR_STATE[data.state] || "normal";
+        if (wanted !== baseFace) {
+          baseFace = wanted;
+          if (!reactUntil) setFace(wanted, now);
+        }
+      } catch (error) {
+        offlineDot.style.display = "block";         // laptop unreachable: show the grey dot
+      }
+      setTimeout(poll, POLL_MS);                    // ask again in a moment
+    }
+
+    // ---- Drawing ----
+    function resize() {
+      // Make the canvas sharp on high-resolution phone screens.
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(window.innerWidth * ratio);
+      canvas.height = Math.round(window.innerHeight * ratio);
+    }
+
+    function line(x0, y0, x1, y1) {
+      // Thick line with square ends, like the firmware's chunky pixel lines.
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+
+    function drawEye(cx, side, pose) {
+      // side: 0 = left eye, 1 = right eye. m flips shapes for the right eye.
+      const m = side ? -1 : 1;
+      const x = cx + pose.dx;
+      const y = CY + pose.dy;
+      if (pose.shape === "rect") {                       // normal: tall rectangle
+        ctx.fillRect(x - EYE_W / 2, y - pose.h / 2, EYE_W, pose.h);
+      } else if (pose.shape === "happy") {               // ^
+        line(x - 22, y + 10, x, y - 14);
+        line(x, y - 14, x + 22, y + 10);
+      } else if (pose.shape === "ouch") {                // > on the left, < on the right
+        line(x - 14 * m, y - 24, x + 14 * m, y);
+        line(x + 14 * m, y, x - 14 * m, y + 24);
+      } else if (pose.shape === "sad") {                 // smaller, lower eye with a slanted brow
+        const eyeY = y + 14;
+        ctx.fillRect(x - EYE_W / 2, eyeY - pose.h / 2, EYE_W, pose.h);
+        line(x - 20 * m, y - 26, x + 18 * m, y - 42);   // low outside, raised inside
+      }
+    }
+
+    function blinkHeight(now, fullH) {
+      // Returns the eye height: full most of the time, squashed during a blink.
+      if (blinkStart < 0 && now >= nextBlink) {
+        blinkStart = now;                                // start a blink
+        nextBlink = now + 2000 + Math.random() * 3500;   // next one in 2 to 5.5 s
+      }
+      if (blinkStart < 0) return fullH;
+      const t = now - blinkStart;
+      if (t < 40) return fullH / 2;                      // closing
+      if (t < 100) return 8;                             // closed
+      if (t < 140) return fullH / 2;                     // opening
+      blinkStart = -1;                                   // blink finished
+      return fullH;
+    }
+
+    function poseFor(now) {
+      // Works out the shape and offsets of the eyes for this frame.
+      const t = now - faceStart;
+      if (face === "happy") {
+        // Bounce up and down every 150 ms for the first 1.2 s.
+        const up = t < HAPPY_BOUNCE_MS && Math.floor(t / 150) % 2 === 1;
+        return { shape: "happy", dx: 0, dy: up ? -6 : 0, h: 0 };
+      }
+      if (face === "sad") {
+        // Droop down slowly over 0.4 s, and still blink.
+        return { shape: "sad", dx: 0, dy: Math.min(t / 100, 4), h: blinkHeight(now, SAD_EYE_H) };
+      }
+      if (face === "ouch") {
+        // Shake left and right every 50 ms for the first 0.9 s.
+        const shake = t < OUCH_SHAKE_MS ? (Math.floor(t / 50) % 2 ? 4 : -4) : 0;
+        return { shape: "ouch", dx: shake, dy: 0, h: 0 };
+      }
+      // Normal: now and then glance left or right, and blink.
+      if (now >= nextGlance) {
+        const targets = [0, 0, 0, -10, 10];              // mostly look straight ahead
+        lookTarget = targets[Math.floor(Math.random() * targets.length)];
+        nextGlance = now + 1500 + Math.random() * 3500;
+      }
+      if (lookX < lookTarget) lookX = Math.min(lookX + 2, lookTarget);
+      else if (lookX > lookTarget) lookX = Math.max(lookX - 2, lookTarget);
+      return { shape: "rect", dx: lookX, dy: 0, h: blinkHeight(now, EYE_H) };
+    }
+
+    function frame(now) {
+      // End a finished > < reaction and go back to the state's face.
+      if (reactUntil && now >= reactUntil) {
+        reactUntil = 0;
+        setFace(baseFace, now);
+      }
+
+      // Scale the 320 x 240 drawing as large as fits (keeps the eye shapes),
+      // centred up and down.
+      const scale = Math.min(canvas.width / VIRTUAL_W, canvas.height / VIRTUAL_H);
+      const offsetX = 0;
+      const offsetY = (canvas.height - VIRTUAL_H * scale) / 2;
+      // How wide the phone screen is in drawing units. A wide phone is wider
+      // than 320, so the eyes go to the real edges, like on the old display.
+      const screenW = canvas.width / scale;
+      // Turn EYES_CLOSER_CM into drawing units: cm -> CSS pixels -> device
+      // pixels (x devicePixelRatio) -> drawing units (/ scale).
+      const ratio = window.devicePixelRatio || 1;
+      const insetPerEye = (EYES_CLOSER_CM / 2) * CSS_PX_PER_CM * ratio / scale;
+      // Never let the eyes get closer than one eye box apart (small screens).
+      const maxInset = Math.max(0, (screenW - 2 * BOX_W) / 2);
+      const inset = Math.min(insetPerEye, maxInset);
+      const leftCx = BOX_W / 2 + inset;              // left eye centre
+      const rightCx = screenW - BOX_W / 2 - inset;   // right eye centre
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);               // reset scaling
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);  // orange background
+      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      ctx.fillStyle = EYE;
+      ctx.strokeStyle = EYE;
+      ctx.lineWidth = STROKE;
+      ctx.lineCap = "square";                           // chunky square ends
+
+      const pose = poseFor(now);
+      drawEye(leftCx, 0, pose);
+      drawEye(rightCx, 1, pose);
+      requestAnimationFrame(frame);                     // draw again next screen refresh
+    }
+
+    // ---- Keep the phone screen on (only works on some phones over http) ----
+    async function keepAwake() {
+      try {
+        if ("wakeLock" in navigator) await navigator.wakeLock.request("screen");
+      } catch (error) {
+        // Not allowed here: set the phone's auto-lock to "Never" instead.
+      }
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") keepAwake();  // ask again after unlocking
+    });
+
+    // Tapping the screen asks for full screen (works on Android; on iPhone use
+    // "Add to Home Screen" instead).
+    canvas.addEventListener("click", () => {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      keepAwake();
+    });
+
+    window.addEventListener("resize", resize);  // phone rotated
+    resize();
+    keepAwake();
+    poll();
+    requestAnimationFrame(frame);
+  </script>
 </body>
 </html>

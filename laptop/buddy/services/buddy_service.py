@@ -132,6 +132,9 @@ class BuddyService:
         # Goes up by one on every state change, even DONE -> DONE, so the
         # web page can tell "a new DONE happened" from "still the same DONE".
         self._change_id = 0
+        # Goes up by one on every slap and every undo-button press, so the phone
+        # face can show "> <" for a moment (it watches for this number to change).
+        self._reaction_id = 0
         # Who caused the last change: "hook", "nag", "button" or "manual" (the web page).
         self._source = "startup"
         # time.monotonic() is a clock that never jumps backwards
@@ -155,8 +158,6 @@ class BuddyService:
         self._waiting_for: Optional[BuddyState] = None
         # The line each sound group played last, so _say() doesn't repeat it.
         self._last_line: Dict[str, str] = {}
-        # How many slaps so far. The phone face shows > < when it goes up.
-        self._slaps = 0
 
     # ---- Called by the hook routes ----
 
@@ -192,6 +193,7 @@ class BuddyService:
 
     async def on_button_pressed(self) -> str:
         # Returns a short result string for the curl reply and the log.
+        self._reaction_id += 1                 # phone face shows "> <" for a moment
         if self._state not in REDO_ALLOWED_STATES:
             logger.info("Button ignored in state %s", self._state.value)
             return f"ignored: state is {self._state.value}"
@@ -225,8 +227,8 @@ class BuddyService:
         #   1. You're in another app: bring Claude Code (VS Code) to the front.
         #   2. You're already in VS Code: undo the files Claude changed in its
         #      latest turn.
-        # The phone face shows "> <" when it sees this counter go up.
-        self._slaps += 1
+        # The phone face shows "> <" for a moment (the board no longer has a screen).
+        self._reaction_id += 1
         if not self._focuser.is_in_front():
             if self._focuser.focus():
                 return "focused"
@@ -279,6 +281,11 @@ class BuddyService:
 
     # ---- Called by the status route ----
 
+    def get_face_state(self) -> dict:
+        # The little the phone face needs. Kept separate from get_status() so
+        # devices on the network see only the mood, not the camera or messages.
+        return {"state": self._state, "reaction_id": self._reaction_id}
+
     def get_status(self) -> dict:
         seconds_in_state = time.monotonic() - self._state_changed_at
         watching = self._watch_task is not None and not self._watch_task.done()
@@ -292,7 +299,6 @@ class BuddyService:
             "watching_camera": watching,
             "nagging": self._nagging,
             "distracted": self._detector.is_distracted(),
-            "slaps": self._slaps,
         }
 
     # ---- Watching the camera while Claude waits for you ----

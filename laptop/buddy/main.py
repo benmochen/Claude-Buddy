@@ -2,14 +2,15 @@
 
 import asyncio
 import logging
+import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from buddy.api import button, camera, hooks, mood, status
+from buddy.api import button, camera, face, hooks, mood, status
 from buddy.dependencies import get_buddy_service, get_detector, get_output
 
 # INFO shows state changes. Change to logging.DEBUG to also see which
@@ -45,6 +46,11 @@ async def lifespan(app: FastAPI):
 
     # Opens the STM32's serial port (if plugged in) and starts listening for BTN and SLAP.
     get_output().start(on_button=on_board_button, on_slap=on_board_slap)
+    # Print the address to type on the phone.
+    logging.getLogger(__name__).info(
+        "Phone face: open http://%s:8765/face on the phone (same Wi-Fi or hotspot)",
+        _lan_address(),
+    )
     yield
     # Closes the serial port.
     get_output().stop()
@@ -58,6 +64,20 @@ def _log_button_result(future) -> None:
         logging.getLogger(__name__).info("STM32 button: %s", future.result())
     except Exception:
         logging.getLogger(__name__).exception("STM32 button press failed")
+
+
+def _lan_address() -> str:
+    # The laptop's address on the Wi-Fi, for example 192.168.1.23.
+    # Connecting a UDP socket sends no data; it only makes macOS pick the
+    # network interface it would use, and tells us that interface's address.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("10.255.255.255", 1))
+        return probe.getsockname()[0]
+    except OSError:
+        return "<laptop address>"           # no network at all
+    finally:
+        probe.close()
 
 
 def _log_slap_result(future) -> None:
@@ -74,6 +94,26 @@ app.include_router(status.router)
 app.include_router(button.router)
 app.include_router(camera.router)
 app.include_router(mood.router)
+app.include_router(face.router)
+
+# The only things other devices (the phone) may open. Everything else (hooks,
+# /slap, /button, the mood page...) only works from this laptop, because with
+# --host 0.0.0.0 anyone on the same Wi-Fi could otherwise undo your files or
+# type into Claude.
+PUBLIC_PATHS = ("/face", "/face/state")
+LOCAL_ADDRESSES = ("127.0.0.1", "::1")
+
+
+@app.middleware("http")
+async def local_only(request: Request, call_next):
+    # request.client.host is the address the request came from.
+    client = request.client.host if request.client else ""
+    is_local = client in LOCAL_ADDRESSES
+    is_public = request.method == "GET" and request.url.path in PUBLIC_PATHS
+    if not is_local and not is_public:
+        # 403 = forbidden. Nothing in the app runs for this request.
+        return JSONResponse({"detail": "only allowed from the laptop itself"}, status_code=403)
+    return await call_next(request)
 
 # The mood page: open http://127.0.0.1:8765/ in a browser.
 STATIC_DIR = Path(__file__).parent / "static"
@@ -91,35 +131,6 @@ async def no_stale_page(request, call_next):
     return response
 
 
-# Addresses that mean "this laptop itself".
-LOCAL_CLIENTS = ("127.0.0.1", "::1", "localhost")
-
-
-@app.middleware("http")
-async def network_can_only_view_face(request, call_next):
-    # To let the phone reach the face page, the server listens on the Wi-Fi
-    # network (uvicorn --host 0.0.0.0). Then ANY device on that Wi-Fi could
-    # call it, and on hackathon Wi-Fi that's a room full of strangers. So
-    # other devices may only GET the face page, its files and /status.
-    # Everything else (hooks, /slap = undo your files, /button = type into
-    # Claude, /mood, /messages, /calibrate) only works from this laptop.
-    client = request.client.host if request.client else ""
-    if client in LOCAL_CLIENTS:
-        return await call_next(request)
-    path = request.url.path
-    viewing_face = path == "/face" or path == "/status" or path.startswith("/static/")
-    if request.method == "GET" and viewing_face:
-        return await call_next(request)
-    logging.getLogger(__name__).warning("Refused %s %s from %s", request.method, path, client)
-    return JSONResponse({"detail": "only the face page is reachable from other devices"}, status_code=403)
-
-
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
-
-
-@app.get("/face", include_in_schema=False)
-async def face() -> FileResponse:
-    # The buddy's face for a phone in the toy: http://<laptop IP>:8765/face
-    return FileResponse(STATIC_DIR / "face.html")
