@@ -33,6 +33,12 @@ button presses.
   - `buddy/api/mood.py`: POST /mood, GET/PUT/DELETE /messages (used by the mood page)
   - `buddy/messages.py`: MessageStore, the editable LCD text per mood (16 chars, printable ASCII)
   - `buddy/static/`: the mood page, served at http://127.0.0.1:8765/
+  - `buddy/api/face.py` + `buddy/static/face.html`: the phone face (the TFT broke). GET /face is
+    the page (canvas eyes, same drawing as firmware face.c, eyes at the screen edges); it polls
+    GET /face/state ({state, reaction_id}) every 0.3 s. reaction_id goes up on each slap and
+    button press, and the page shows `> <` for 1.5 s.
+  - `buddy/main.py` middleware `local_only`: requests from other devices may only GET /face and
+    /face/state (403 for everything else), because the server listens on the network for the phone.
   - `buddy/api/camera.py`: POST /calibrate (re-measure the "working" head position, 3 s)
   - `buddy/api/button.py`: POST /button (redo button by curl; the STM32 button calls the same
     service method through serial_output). POST /slap (fake head slap). Replies {"result": ...}
@@ -66,7 +72,11 @@ button presses.
 
 ## Running it (user's Mac, project at ~/Documents/desk-buddy)
 
-- Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --port 8765`
+- Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --host 0.0.0.0 --port 8765`
+  (`--host 0.0.0.0` lets the phone connect; the log prints `Phone face: open http://<ip>:8765/face`).
+  Phone and laptop on the same network: easiest is the phone's hotspot with the laptop joined to it
+  (hackathon Wi-Fi often blocks device-to-device traffic). Phone: auto-lock Never; iPhone: Safari
+  "Add to Home Screen" for full screen.
   Env vars in front: `BUDDY_QUIET=1` prints `[PLAY] <file>` instead of playing sounds;
   `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1;
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port;
@@ -226,6 +236,10 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
 3. Optional: Claude Haiku-generated roasts using last_assistant_message.
 
 ## Known gaps (keep this list current)
+
+- Phone face: no password; anyone on the same network can VIEW the face and mood (nothing else).
+  Polling every 0.3 s, not pushed. The laptop's address can change when the network changes:
+  re-read it from the log.
 
 - Detector limits were tuned on one test (Ben, his desk, his lighting). Different
   lighting or seating on demo day: recalibrate, maybe retune.
