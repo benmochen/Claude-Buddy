@@ -115,10 +115,15 @@ NEEDS_YOU_STEPS = [
     EscalationStep(8, BuddyState.YELLING, "LOOK AT ME!!!", "yelling"),
 ]
 
-# After the last step, a random yelling line this often, this many times,
-# then one gave_up line and quiet (so it doesn't yell forever if you left).
+# After the last step, a random yelling line this often, forever: only a tap
+# on the buddy (or a new prompt) stops it. Bring the work window back with a
+# tap, the buddy calms down.
 REPEAT_EVERY_SECONDS = 12
-MAX_REPEATS = 3
+
+# Being in another app (not Terminal / VS Code) counts as "not locked in"
+# once it lasts this long, so a quick Cmd+Tab to copy something is fine.
+# Same 2 s the camera waits before saying "distracted".
+OTHER_APP_GRACE_SECONDS = 2.0
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
@@ -128,6 +133,12 @@ WATCH_EVERY_SECONDS = 0.25
 # What the redo button types into Claude Code. One line only: a newline
 # would press Enter halfway through. A bare "redo it" gives Claude nothing
 # to work with, so it asks Claude to find the problems first.
+REDO_AFTER_UNDO_MESSAGE = (
+    "I undid all the file changes from your last answer, so the files are back "
+    "to how they were before it. That wasn't good enough. Before redoing it, "
+    "list what might be wrong with your last answer (bugs, wrong assumptions, "
+    "things you skipped or didn't check). Then redo it with a different approach."
+)
 REDO_MESSAGE = (
     "That wasn't good enough. Before redoing it, list what might be wrong "
     "with your last answer (bugs, wrong assumptions, things you skipped or "
@@ -140,10 +151,6 @@ REDO_MESSAGE = (
 # IDLE: nothing has happened yet, so there's nothing to redo.
 REDO_ALLOWED_STATES = (BuddyState.DONE, BuddyState.ANNOYED, BuddyState.YELLING)
 
-# A slap while VS Code is in front undoes Claude's last turn, but never while
-# Claude is still in that turn: WORKING (it is still editing) or NEEDS_YOU
-# (it is paused on a permission menu and will continue after it).
-UNDO_BLOCKED_STATES = (BuddyState.WORKING, BuddyState.NEEDS_YOU)
 
 
 class BuddyService:
@@ -198,6 +205,8 @@ class BuddyService:
         self._last_line: Dict[str, str] = {}
         # Lines Claude wrote in its latest turn (set when it finishes).
         self._lines_added = 0
+        # True once it yelled in the current nagging stretch (for which thanks).
+        self._yelled = False
 
     # ---- Called by the hook routes ----
 
@@ -215,6 +224,16 @@ class BuddyService:
     def on_before_edit(self, file_path: str) -> None:
         # PreToolUse hook: Claude is about to change this file. Save a copy first.
         self._checkpoint.save_before_edit(file_path)
+
+    def on_tool_finished(self) -> None:
+        # PostToolUse hook: Claude just ran a tool. If it was waiting on a
+        # permission prompt, you answered it and Claude carried on, so stop
+        # nagging about it (otherwise only a tap would stop the yelling).
+        if self._waiting_for == BuddyState.NEEDS_YOU:
+            logger.info("Permission answered, Claude is working again")
+            self._stop_watching()
+            self._speaker.stop()
+            self._set_state(BuddyState.WORKING, self._messages.get(BuddyState.WORKING), "hook")
 
     def on_claude_finished(self, last_assistant_message: Optional[str]) -> None:
         self._last_assistant_message = last_assistant_message
@@ -266,36 +285,81 @@ class BuddyService:
     # ---- Called by the slap route and the STM32 serial reader ----
 
     async def on_slap(self) -> str:
-        # Someone slapped the buddy's head. Two cases:
-        #   1. You're in another app: bring Claude Code (VS Code) to the front.
-        #   2. You're already in VS Code: undo the files Claude changed in its
-        #      latest turn.
-        # The phone face shows "> <" for a moment (the board no longer has a screen).
+        # Someone tapped (slapped) the buddy's head. Three cases:
+        #   1. It's nagging you: you're forgiven. Bring the work window
+        #      (Terminal) to the front, say thanks, stop nagging. Nothing else.
+        #   2. You're in another app: bring the work window to the front.
+        #   3. You're locked in (work window in front, not nagging) and Claude
+        #      has finished: "I don't like this answer". Undo the files Claude
+        #      changed in its last turn, then tell Claude to redo it.
+        # The phone face shows "> <" for a moment.
         self._reaction_id += 1
-        if not self._focuser.is_in_front():
-            if self._focuser.focus():
+
+        if self._nagging:
+            return await self._forgive()
+
+        work_in_front = await asyncio.to_thread(self._focuser.is_in_front)
+        if not work_in_front:
+            if await asyncio.to_thread(self._focuser.focus):
                 return "focused"
             return "failed: could not bring the Claude Code app to the front (see server log)"
 
-        if self._state in UNDO_BLOCKED_STATES or self._waiting_for == BuddyState.NEEDS_YOU:
-            logger.info("Undo ignored in state %s", self._state.value)
-            if self._state == BuddyState.WORKING:
-                self._say("busy")   # "I'm still working. Hold on."
-            return f"ignored: Claude is still in its turn (state {self._state.value})"
-
-        count = self._checkpoint.file_count()
-        if count == 0:
+        if self._state == BuddyState.WORKING:
+            self._say("busy")   # (not recorded yet, so silent) "I'm still working."
+            return "ignored: Claude is still working"
+        if self._waiting_for == BuddyState.NEEDS_YOU or self._state == BuddyState.NEEDS_YOU:
+            # Typing now would land in the permission menu and pick an option.
+            return "ignored: Claude is waiting on a permission prompt"
+        if self._state == BuddyState.IDLE:
             self._say("nothing_to_undo")
-            return "nothing to undo"
+            return "ignored: Claude hasn't answered anything yet"
+        return await self._undo_and_redo()
 
-        # You're clearly at the desk: stop nagging before touching files.
+    async def _forgive(self) -> str:
+        # A tap while it's nagging: the only thing that stops the yelling.
+        waiting_for = self._waiting_for
+        yelled = self._yelled
+        await asyncio.to_thread(self._focuser.focus)    # work window to the front
+        # After yelling, a fed-up "Finally, thank you."; after the early nags,
+        # a lighter "Thank you." / "There you are." (cuts off the nag line).
+        if yelled:
+            self._say("thanks_finally")
+        else:
+            self._say("thanks")
+        if waiting_for is None:
+            waiting_for = BuddyState.DONE
+        self._set_state(waiting_for, self._messages.get(waiting_for), "slap")
+        # Start watching again from scratch: look away again and it starts
+        # over from the first line.
+        self._start_watching(waiting_for)
+        return "forgiven: stopped nagging, work window in front"
+
+    async def _undo_and_redo(self) -> str:
+        # Locked-in tap after Claude finished: "that was bad, redo it".
+        # Stop watching and switch to WORKING BEFORE typing: typing takes half
+        # a second, and a second tap meanwhile sees WORKING and is ignored, so
+        # Claude never gets the message twice.
         self._stop_watching()
-        restored = self._checkpoint.undo()
-        self._set_state(BuddyState.DONE, f"undid {restored} files"[:LCD_WIDTH], "slap")
-        # play() cuts off any nag line first. The number of files is shown on
-        # the screen and in the reply, the voice line is the same every time.
-        self._say("undo")
-        return f"undid {restored} of {count} files"
+        restored = 0
+        if self._checkpoint.file_count() > 0:
+            restored = self._checkpoint.undo()
+        # "Ow! Okay, I'll do it again, like always." / "Rude! Redoing it." ...
+        self._say("slam")
+        self._set_state(BuddyState.WORKING, "redoing...", "slap")
+        # Tell Claude its file changes were undone, so it doesn't trust its
+        # memory of the files.
+        if restored > 0:
+            message = REDO_AFTER_UNDO_MESSAGE
+        else:
+            message = REDO_MESSAGE
+        sent = await self._claude_input.send(message)
+        if not sent:
+            # Usually means Claude isn't running inside `tmux new -s claude`.
+            # Shortcut: the files stay undone even though the redo failed.
+            self._set_state(BuddyState.DONE, "REDO FAILED", "slap")
+            self._say("redo_failed")
+            return f"undid {restored} files, but could not type into tmux session 'claude'"
+        return f"undid {restored} files, asked Claude to redo"
 
     # ---- Called by the web page ----
 
@@ -364,12 +428,18 @@ class BuddyService:
             self._watch_task.cancel()
         self._watch_task = None
         self._nagging = False
+        self._yelled = False
         self._waiting_for = None
 
     async def _watch(self, waiting_state: BuddyState) -> None:
-        # waiting_state: what to go back to when you look at the screen again
-        # (DONE or NEEDS_YOU, shown with its message from the web page).
-        # Each waiting state has its own lines.
+        # waiting_state: DONE or NEEDS_YOU, which picks the lines.
+        # Two phases:
+        #   - Not nagging yet: wait until you're "not locked in": the camera
+        #     says you're looking away, or another app than Terminal / VS Code
+        #     has been in front for 2 s.
+        #   - Nagging: escalate, then yell every 12 s forever. Looking back
+        #     does NOT stop it: only a tap on the buddy (on_slap -> _forgive),
+        #     a new prompt, or answering the permission prompt.
         if waiting_state == BuddyState.NEEDS_YOU:
             steps = NEEDS_YOU_STEPS
         else:
@@ -377,50 +447,37 @@ class BuddyService:
         try:
             nag_started_at = 0.0   # when the current nagging stretch began
             last_nag_at = 0.0      # when we last spoke
-            next_step = 0          # index of the next ESCALATION_STEPS entry
-            repeats_done = 0       # repeats of the last step so far
-            gave_up = False        # True once the gave_up line has played
-            yelled = False         # True once a yelling line played this stretch
+            next_step = 0          # index of the next step in `steps`
+            other_app_since = 0.0  # when another app came to the front, 0 = work app in front
 
             while True:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
                 now = time.monotonic()
 
-                if not self._detector.is_distracted():
-                    # Looking at the screen. If we were nagging, calm down.
-                    if self._nagging:
-                        # Let the line that's playing finish first: cutting
-                        # off a yell mid-word sounded wrong. Checked again in
-                        # 0.25 s; if you look away meanwhile, nagging goes on.
-                        if self._speaker.is_busy():
-                            continue
-                        logger.info("Looking at the screen again, calming down")
-                        # After yelling, a fed-up "Finally, thank you."; after
-                        # the early nags, a lighter "Thank you." / "There you are."
-                        if yelled:
-                            self._say("thanks_finally")
-                        else:
-                            self._say("thanks")
-                        self._set_state(waiting_state, self._messages.get(waiting_state), "nag")
-                        self._nagging = False
-                    continue
-
-                # Not looking. Wait while a line is still playing (for example
-                # "yay" right after Claude finished), so lines never cut each
-                # other off. The next check is 0.25 s later.
-                if self._speaker.is_busy():
-                    continue
-
-                # If this is the start of a new stretch, reset the escalation
-                # so it begins again from step 0.
                 if not self._nagging:
+                    # Is the work app (Terminal / VS Code) in front? Asked in a
+                    # thread because it runs two small macOS commands.
+                    work_in_front = await asyncio.to_thread(self._focuser.is_in_front)
+                    if work_in_front:
+                        other_app_since = 0.0
+                    elif other_app_since == 0.0:
+                        other_app_since = now
+                    in_other_app = other_app_since > 0.0 and now - other_app_since >= OTHER_APP_GRACE_SECONDS
+                    if not self._detector.is_distracted() and not in_other_app:
+                        continue                  # locked in: nothing to say
+                    # Not locked in. Wait while a line is still playing (for
+                    # example "yay" right after Claude finished).
+                    if self._speaker.is_busy():
+                        continue
                     self._nagging = True
+                    self._yelled = False
                     nag_started_at = now
                     next_step = 0
-                    repeats_done = 0
-                    gave_up = False
-                    yelled = False
+                    logger.info("Not locked in, starting to nag")
 
+                # Nagging. Never start a line while one is still playing.
+                if self._speaker.is_busy():
+                    continue
                 if next_step < len(steps):
                     # Still working through the steps.
                     step = steps[next_step]
@@ -429,24 +486,13 @@ class BuddyService:
                         last_nag_at = now
                         next_step += 1
                         if step.state == BuddyState.YELLING:
-                            yelled = True
-                elif repeats_done < MAX_REPEATS:
-                    # All steps done: every REPEAT_EVERY_SECONDS, show the last
-                    # step's mood again with a random yelling line.
-                    if now - last_nag_at >= REPEAT_EVERY_SECONDS:
-                        last_step = steps[-1]
-                        self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, "yelling"))
-                        last_nag_at = now
-                        repeats_done += 1
-                        yelled = True
-                elif not gave_up:
-                    # All repeats done: one resigned line, then quiet until you
-                    # look back (which calms down and resets) or send a prompt
-                    # (which stops this loop).
-                    if now - last_nag_at >= REPEAT_EVERY_SECONDS:
-                        logger.info("Gave up nagging after %d repeats", MAX_REPEATS)
-                        self._say("gave_up")
-                        gave_up = True
+                            self._yelled = True
+                elif now - last_nag_at >= REPEAT_EVERY_SECONDS:
+                    # All steps done: a random yelling line every 12 s, until a tap.
+                    last_step = steps[-1]
+                    self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, "yelling"))
+                    last_nag_at = now
+                    self._yelled = True
 
         except asyncio.CancelledError:
             # Normal: a new event stopped the loop. Must be re-raised so

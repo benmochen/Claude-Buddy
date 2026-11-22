@@ -36,7 +36,9 @@ _no_serial = os.environ.get("BUDDY_NO_SERIAL") == "1"
 # The app Claude Code runs in, as a macOS bundle ID. A slap brings it to the
 # front, or undoes Claude's last turn if it's already in front.
 # For Terminal: BUDDY_CLAUDE_APP_ID=com.apple.Terminal
-_claude_app_id = os.environ.get("BUDDY_CLAUDE_APP_ID", "com.microsoft.VSCode")
+_claude_app_id = os.environ.get("BUDDY_CLAUDE_APP_ID", "com.apple.Terminal")
+# Apps that count as "locked in" when they're in front (besides the one above).
+_also_work_apps = ("com.apple.Terminal", "com.microsoft.VSCode")
 
 # The project folder (the one with .claude/settings.json). Undo only ever
 # touches files inside it. parents[2]: dependencies.py -> buddy -> laptop -> project.
@@ -78,7 +80,7 @@ _buddy_service = BuddyService(
     # ~/.config/claude-buddy/messages.json.
     messages=MessageStore(default_config_path()),
     # Slapping the head brings this app to the front (or undoes, see checkpoint).
-    focuser=WindowFocuser(bundle_id=_claude_app_id),
+    focuser=WindowFocuser(bundle_id=_claude_app_id, also_work_apps=_also_work_apps),
     # Copies of files from before Claude's latest turn, for undo.
     checkpoint=TurnCheckpoint(_project_root),
 )

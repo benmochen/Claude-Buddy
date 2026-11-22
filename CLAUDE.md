@@ -21,15 +21,16 @@ button presses.
 ## Repo layout
 
 - `.claude/settings.json`: HTTP hooks (UserPromptSubmit, Stop, Notification with
-  matcher `permission_prompt` only, PreToolUse with matcher `Edit|Write|MultiEdit|NotebookEdit`)
-  posting to `http://127.0.0.1:8765/hooks/...`
+  matcher `permission_prompt` only, PreToolUse with matcher `Edit|Write|MultiEdit|NotebookEdit`,
+  PostToolUse for every tool) posting to `http://127.0.0.1:8765/hooks/...`
 - `laptop/` (Python, FastAPI, run from this folder)
   - `buddy/main.py`: creates the app, includes routers
   - `buddy/state.py`: BuddyState enum: IDLE, WORKING, DONE, NEEDS_YOU, ANNOYED, YELLING
   - `buddy/dependencies.py`: builds the single BuddyService and picks its
     output / speaker / detector. Only file to edit when swapping implementations.
   - `buddy/api/hooks.py`: POST /hooks/prompt-submit, /hooks/stop, /hooks/notification,
-    /hooks/pre-tool-use (file path only; reply 204, never blocks)
+    /hooks/pre-tool-use (file path only; reply 204, never blocks), /hooks/post-tool-use (ends
+    the permission nag once the prompt was answered; payload not read)
   - `buddy/checkpoint.py`: TurnCheckpoint, in-memory copies of files from before Claude's
     first edit of each file in the latest turn; undo() restores them, deletes files Claude created
   - `buddy/api/status.py`: GET /status (also state text, change_id, source for the mood page)
@@ -67,7 +68,8 @@ button presses.
     moment, never the same twice in a row; names without an .mp3 yet are skipped (just record them:
     busy_1, busy_2, redo_failed, yay_2, annoyed_3, yelling_3, undo_2 were planned but not recorded).
   - `buddy/outputs/window_focuser.py`: `lsappinfo` tells which app is in front; `open -b <id>`
-    brings the Claude Code app to the front (BUDDY_CLAUDE_APP_ID, default com.microsoft.VSCode)
+    brings the Claude Code app to the front (BUDDY_CLAUDE_APP_ID, default com.apple.Terminal).
+    is_in_front() is True for any work app: Terminal or VS Code.
   - `buddy/outputs/tmux_typer.py`: types text into tmux session `claude`, waits 0.5 s, presses Enter
   - `buddy/detectors/attention_detector.py`: webcam + MediaPipe Face Landmarker in a
     background thread (15 fps). Not looking = head down > 10 deg vs calibrated working
@@ -97,7 +99,7 @@ button presses.
   Env vars in front: `BUDDY_QUIET=1` prints `[PLAY] <file>` instead of playing sounds;
   `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1;
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port;
-  `BUDDY_CLAUDE_APP_ID=com.apple.Terminal` changes the Claude Code app (default com.microsoft.VSCode);
+  `BUDDY_CLAUDE_APP_ID=com.apple.Terminal` changes the app a tap brings forward (default com.apple.Terminal);
   `BUDDY_AUDIO=laptop` plays the voice on the laptop even when the phone has sound on.
   Plug the board in BEFORE starting the server (the port is only looked for at startup).
   Look at the screen while it starts (calibration). Recalibrate: `curl -X POST http://127.0.0.1:8765/calibrate`
@@ -123,31 +125,34 @@ button presses.
   The camera is ignored while Claude works.
 - Stop hook -> DONE, starts the watch loop
 - Notification (permission_prompt) -> NEEDS_YOU, starts the watch loop
-- Watch loop (asyncio task, checks detector every 0.25 s). Never starts a line while one is
-  playing. After DONE, when distracted: ANNOYED `done` group (0 s), `annoyed` (8 s), another
-  `annoyed` (16 s), YELLING `yelling` (24 s), then a `yelling` line every 12 s, max 3, then one
-  `gave_up` line and quiet. After NEEDS_YOU: `needs_you` (0 s), `yelling` (8 s), same repeats.
-  Looking back while nagging -> lets the current line finish (never cut off), then `thanks`
-  ("Thank you." / "There you are.") or, if it already yelled, `thanks_finally` ("Finally, thank you."), return to DONE / NEEDS_YOU. Looking away again restarts
-  from the first step. Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS; lines: SOUND_GROUPS (comments give each clip's
+- "Locked in" = camera says you're looking at the screen AND a work app (Terminal or VS Code) is
+  in front. Another app in front for 2 s (OTHER_APP_GRACE_SECONDS) or looking away (camera, 2 s)
+  = not locked in.
+- Watch loop (asyncio task, every 0.25 s, after Stop / permission Notification). Waits until
+  you're not locked in, then nags: after DONE: ANNOYED `done` (0 s), `annoyed` (8 s), another
+  `annoyed` (16 s), YELLING `yelling` (24 s), then a `yelling` line every 12 s FOREVER. After
+  NEEDS_YOU: `needs_you` (0 s), `yelling` (8 s), same repeats. Never starts a line while one is
+  playing. Coming back yourself does NOT stop it (Ben's choice, Nov 21): only a tap, a new
+  prompt, or answering the permission prompt (PostToolUse -> WORKING) stops it.
+  Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS; lines: SOUND_GROUPS (comments give each clip's
   actual words). `annoyed2` ("I wrote 400 lines for you") only plays when Claude wrote at least
   BIG_TURN_LINES (100) lines that turn (TurnCheckpoint.lines_added(), Edit/Write tools only).
-- Other voice moments: Notification (permission) -> `needs_you` right away; slap while WORKING ->
-  `busy`; slap with nothing to undo -> `nothing_to_undo`; slap undo -> `undo`; redo button ->
-  `slam`, tmux failure -> `redo_failed`.
-- Button (POST /button, or `BTN` from the STM32): only in DONE, ANNOYED, YELLING, and never
-  while the watch loop is waiting on NEEDS_YOU (not WORKING: message would
-  queue; not NEEDS_YOU: typed text could pick a permission option; not IDLE). Cancels
-  nag, plays `slam` ("Ow. Okay. I'll do it again."), sets WORKING "redoing..." BEFORE typing so a double press is
-  ignored, then types REDO_MESSAGE. tmux failure -> DONE "REDO FAILED".
-- Head slap (accelerometer, `SLAP:<mg>` from the STM32, or POST /slap), two cases:
-  another app in front -> bring VS Code to the front (any state, no state change);
-  VS Code already in front -> undo the files Claude changed in its latest turn (from the
-  PreToolUse checkpoint), stop nagging, DONE "undid N files", say "Undid N files.".
-  Undo refused in WORKING / NEEDS_YOU / nagging about a permission prompt (Claude is mid-turn).
-  A new prompt clears the checkpoint; a second slap says "Nothing to undo." The board
-  shows `> <` for 1.5 s on its own. Firmware: jolt = distance of the reading from a slow running
-  average; > 700 mg = slap; 1.5 s cooldown so the spring wobble is not counted again.
+  `gave_up` is no longer used.
+- Head slap / tap (accelerometer, `SLAP:<mg>` from the STM32, or POST /slap), three cases:
+  1. Nagging -> forgiven: bring Terminal to the front, `thanks_finally` ("Finally, thank you.") if
+     it yelled, else `thanks`; back to DONE / NEEDS_YOU, watching restarts from scratch.
+  2. Not nagging, another app in front -> bring Terminal to the front (no state change).
+  3. Locked in (work app in front, not nagging) -> in DONE: undo the files Claude changed in its
+     latest turn (PreToolUse checkpoint), play `slam` ("Rude! Redoing it."), WORKING "redoing...",
+     type REDO_AFTER_UNDO_MESSAGE (or REDO_MESSAGE if no files changed) into tmux `claude`.
+     Ignored in WORKING (`busy`, not recorded) and NEEDS_YOU (typing would pick a menu option);
+     IDLE -> `nothing_to_undo`. tmux failure -> DONE "REDO FAILED", files stay undone.
+  Firmware: jolt = distance of the reading from a slow running average; > 700 mg = slap; 1.5 s
+  cooldown so the spring wobble is not counted again.
+- Other voice moments: Stop -> `yay`; Notification (permission) -> `needs_you` right away.
+- Button (POST /button, or `BTN` from the STM32; the physical button is gone): old redo path,
+  only in DONE, ANNOYED, YELLING, never while nagging about NEEDS_YOU. Plays `slam`, types
+  REDO_MESSAGE.
 - Mood page (POST /mood): sets IDLE/WORKING/DONE/NEEDS_YOU by hand (source "manual"),
   stops the watch loop. ANNOYED/YELLING are refused (422), only the watch loop sets them.
 - LCD text is max 16 chars; `_set_state` raises if longer.
@@ -283,8 +288,9 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
   git) are NOT undone. Claude is not told about the undo, so its memory of the files is stale.
 - Undo copies are in memory only: restarting the server loses them. Files outside the project
   folder are never saved or restored.
-- Shortcut: a slap focuses the whole app, not a specific window or the Claude Code panel; with
-  several VS Code windows, macOS shows the last used one.
+- Shortcut: a tap focuses the whole Terminal app, not the tmux window running Claude; with
+  several Terminal windows, macOS shows the last used one.
+- Yelling never stops on its own: if you leave the desk it yells every 12 s until a tap or a prompt.
 - Shortcut: `T:` status text is sent but not shown on the TFT.
 - `firmware/Claude-buddy/Debug/` (build output, about 20 MB) is committed; should be gitignored.
 - Production version would: keep state per session_id, require a token header on hooks.

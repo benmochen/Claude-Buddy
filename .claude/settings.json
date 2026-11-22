@@ -45,6 +45,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/hooks/post-tool-use",
+            "timeout": 2
+          }
+        ]
+      }
     ]
   }
 }

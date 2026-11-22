@@ -17,13 +17,20 @@ logger = logging.getLogger(__name__)
 
 
 class WindowFocuser:
-    def __init__(self, bundle_id: str) -> None:
-        # The app Claude Code runs in, for example "com.microsoft.VSCode".
+    def __init__(self, bundle_id: str, also_work_apps=()) -> None:
+        # The app Claude Code runs in, for example "com.apple.Terminal".
+        # focus() brings this one to the front.
         self._bundle_id = bundle_id
+        # Other apps that also count as "working" when they're in front
+        # (for example VS Code), but are never brought forward.
+        self._work_apps = [bundle_id]
+        for app in also_work_apps:
+            self._work_apps.append(app)
 
     def is_in_front(self) -> bool:
-        # True if the Claude Code app is the app you are using right now.
-        return self._front_bundle_id() == self._bundle_id
+        # True if the app you are using right now is a work app
+        # (the Claude Code app or one of also_work_apps).
+        return self._front_bundle_id() in self._work_apps
 
     def focus(self) -> bool:
         # Brings the Claude Code app to the front. Returns True on success.

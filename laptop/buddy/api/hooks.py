@@ -74,3 +74,16 @@ async def pre_tool_use(
         service.on_before_edit(file_path)
     # Always 204 with no body: "go ahead", never blocks Claude's edit.
     return Response(status_code=204)
+
+
+@router.post("/post-tool-use", status_code=204)
+async def post_tool_use(
+    payload: Dict[str, Any] = Body(...),
+    service: BuddyService = Depends(get_buddy_service),
+) -> Response:
+    # Fires after every tool Claude runs. Only used to notice that a
+    # permission prompt was answered (Claude carried on), so the buddy stops
+    # nagging about it. Nothing in the payload is read.
+    _log_payload("PostToolUse", payload)
+    service.on_tool_finished()
+    return Response(status_code=204)
