@@ -122,11 +122,12 @@
       try {
         // cache: "no-store" makes sure the phone never shows an old answer.
         // audio=1 tells the laptop "send the voice here" (only once sound works).
-        const url = soundOn ? "/face/state?audio=1" : "/face/state";
+        const url = soundReady() ? "/face/state?audio=1" : "/face/state";
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) throw new Error("status " + response.status);
         const data = await response.json();
         offlineDot.style.display = "none";          // connected: hide the grey dot
+        updateSoundHint();                          // show "Tap for sound" if sound got switched off
         const now = performance.now();
 
         // A new slap or button press: show > < for a moment.
@@ -276,16 +277,16 @@
     }
 
     // ---- Voice ----
-    function playClip(name) {
-      player.pause();                                   // cut off the previous clip
-      if (!name || !soundOn) return;
-      player.src = "/face/sounds/" + name + ".mp3";
-      player.play().catch(() => {
-        // The phone refused (sound permission lost): ask for a tap again,
-        // and the laptop takes over the voice within 2 s.
-        soundOn = false;
-        soundHint.style.display = "block";
-      });
+    function soundReady() {
+      // True if the phone will really play sound right now. The laptop only
+      // sends the voice here while this is true (the ?audio=1 in poll()).
+      return audioCtx !== null && audioCtx.state === "running";
+    }
+
+    function updateSoundHint() {
+      // "Tap for sound" stays visible until sound really works. It comes back
+      // if the phone switched sound off (for example after the screen locked).
+      soundHint.style.display = soundReady() ? "none" : "block";
     }
 
     function unlockSound() {
@@ -310,12 +311,12 @@
     }
 
     async function preloadClips() {
-      // Download every clip once so later plays start without waiting.
+      // Download and decode every clip once so later plays start instantly.
       try {
         const response = await fetch("/face/sounds");
         const data = await response.json();
         for (const name of data.clips) {
-          fetch("/face/sounds/" + name + ".mp3").catch(() => {});
+          loadClip(name).catch(() => {});
         }
       } catch (error) {
         // Not important: clips then download when first played.
@@ -331,7 +332,12 @@
       }
     }
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") keepAwake();  // ask again after unlocking
+      if (document.visibilityState === "visible") {
+        keepAwake();                                // ask again after unlocking
+        // The phone pauses sound when the screen locks; try to restart it.
+        // If the phone refuses, "Tap for sound" shows again.
+        if (audioCtx !== null) audioCtx.resume().catch(() => {});
+      }
     });
 
     // Tapping the screen turns sound on, and asks for full screen (works on
@@ -348,7 +354,9 @@
         document.documentElement.requestFullscreen().catch(() => {});
       }
       keepAwake();
-    });
+    }
+    document.addEventListener("touchend", onTap);
+    document.addEventListener("click", onTap);
 
     window.addEventListener("resize", resize);  // phone rotated
     resize();
