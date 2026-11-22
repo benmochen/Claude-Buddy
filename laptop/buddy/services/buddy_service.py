@@ -301,18 +301,25 @@ class BuddyService:
     # ---- Called by the slap route and the STM32 serial reader ----
 
     async def on_slap(self) -> str:
-        # Someone tapped (slapped) the buddy's head. Three cases:
-        #   1. It's nagging you: you're forgiven. Bring the work window
+        # Someone tapped (slapped) the buddy's head. In order:
+        #   0. The buddy asked "New chat?": the tap means yes.
+        #   1. Claude is working: ignored completely (no face, no focus, no
+        #      undo). A knock-knock still opens a new chat (on_knock).
+        #   2. It's nagging you: you're forgiven. Bring the work window
         #      (Terminal) to the front, say thanks, stop nagging. Nothing else.
-        #   2. You're in another app: bring the work window to the front.
-        #   3. You're locked in (work window in front, not nagging) and Claude
+        #   3. You're in another app: bring the work window to the front.
+        #   4. You're locked in (work window in front, not nagging) and Claude
         #      has finished: "I don't like this answer". Undo the files Claude
         #      changed in its last turn, then tell Claude to redo it.
-        # The phone face shows "> <" for a moment.
-        self._reaction_id += 1
-
         if self._question_is_open():
+            self._reaction_id += 1             # phone face shows "> <" for a moment
             return await self._answer_yes()
+
+        if self._state == BuddyState.WORKING:
+            logger.info("Tap ignored: Claude is working")
+            return "ignored: Claude is still working"
+
+        self._reaction_id += 1                 # phone face shows "> <" for a moment
 
         if self._nagging:
             return await self._forgive()
@@ -323,9 +330,6 @@ class BuddyService:
                 return "focused"
             return "failed: could not bring the Claude Code app to the front (see server log)"
 
-        if self._state == BuddyState.WORKING:
-            self._say("busy")   # (not recorded yet, so silent) "I'm still working."
-            return "ignored: Claude is still working"
         if self._waiting_for == BuddyState.NEEDS_YOU or self._state == BuddyState.NEEDS_YOU:
             # Typing now would land in the permission menu and pick an option.
             return "ignored: Claude is waiting on a permission prompt"

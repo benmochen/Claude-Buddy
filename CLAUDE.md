@@ -140,7 +140,9 @@ button presses.
   actual words). `annoyed2` ("I wrote 400 lines for you") only plays when Claude wrote at least
   BIG_TURN_LINES (100) lines that turn (TurnCheckpoint.lines_added(), Edit/Write tools only).
   `gave_up` is no longer used.
-- Head slap / tap (accelerometer, `SLAP:<mg>` from the STM32, or POST /slap), three cases:
+- Head slap / tap (accelerometer, `SLAP:<mg>` from the STM32, or POST /slap). While Claude is
+  WORKING a single tap is ignored completely (no focus, no `> <`); only a yes to "New chat?" counts,
+  and a knock-knock still opens a chat. Otherwise three cases:
   1. Nagging -> forgiven: bring Terminal to the front, `thanks_finally` ("Finally, thank you.") if
      it yelled, else `thanks`; back to DONE / NEEDS_YOU, watching restarts from scratch.
   2. Not nagging, another app in front -> bring Terminal to the front (no state change).
