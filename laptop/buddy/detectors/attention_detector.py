@@ -226,6 +226,25 @@ class AttentionDetector:
             long_enough = now - self._away_since >= SECONDS_BEFORE_DISTRACTED
             return still_away and long_enough
 
+    def is_looking_now(self) -> bool:
+        # Fast answer, no 2 s wait: False if ANY frame in the last 0.5 s was
+        # "not looking". Used to pick WHICH nag line (phone or other app):
+        # is_distracted() only turns True after 2 s, so right after you look
+        # down at your phone it still says "looking" and the buddy would say
+        # "another tab". Whether to nag at all still uses is_distracted().
+        with self._lock:
+            if self._last_away_at is None:
+                return True                       # never looked away yet
+            return time.monotonic() - self._last_away_at > GAP_ALLOWED_SECONDS
+
+    def latest_reason(self) -> str:
+        # Why the latest frame counts as not looking ("head down", "no face",
+        # ...) or "ok". For the log next to each nag line.
+        with self._lock:
+            if self._latest is None:
+                return "no frame yet"
+            return self._latest.reason
+
     # ---- Background thread ----
 
     def _loop(self) -> None:

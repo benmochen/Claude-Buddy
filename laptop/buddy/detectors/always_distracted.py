@@ -17,3 +17,9 @@ class AlwaysDistracted:
 
     def is_distracted(self) -> bool:
         return True
+
+    def is_looking_now(self) -> bool:
+        return False  # never looking (picks the "phone" lines)
+
+    def latest_reason(self) -> str:
+        return "no camera"

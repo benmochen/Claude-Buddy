@@ -588,7 +588,7 @@ class BuddyService:
                     # Still working through the steps.
                     step = steps[next_step]
                     if now - nag_started_at >= step.after_seconds:
-                        self._nag(step, looking)
+                        self._nag(step)
                         last_nag_at = now
                         next_step += 1
                         if step.state == BuddyState.YELLING:
@@ -596,7 +596,7 @@ class BuddyService:
                 elif now - last_nag_at >= REPEAT_EVERY_SECONDS:
                     # All steps done: a random yelling line every 12 s, until a tap.
                     last_step = steps[-1]
-                    self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, "yelling"), looking)
+                    self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, "yelling"))
                     last_nag_at = now
                     self._yelled = True
 
@@ -624,14 +624,17 @@ class BuddyService:
             self._say("thanks")
         self._set_state(waiting_state, self._messages.get(waiting_state), source)
 
-    def _nag(self, step: EscalationStep, looking: bool) -> None:
-        # looking: the camera sees you looking at the screen, so you're not on
-        # your phone but in another app. Then use the "<group>_app" lines
-        # (if that group exists), so it never says "phone" while you browse.
+    def _nag(self, step: EscalationStep) -> None:
+        # If the camera sees you looking at the screen RIGHT NOW (no 2 s wait,
+        # see is_looking_now), you're not on your phone but in another app:
+        # use the "<group>_app" lines (if that group exists), so it never says
+        # "phone" while you browse, and never "another tab" while you're on
+        # your phone.
         self._set_state(step.state, step.lcd_text, "nag")
         group = step.sound
-        if looking and group + "_app" in SOUND_GROUPS:
+        if self._detector.is_looking_now() and group + "_app" in SOUND_GROUPS:
             group = group + "_app"
+        logger.info("Nag: %s lines (camera: %s)", group, self._detector.latest_reason())
         self._say(group)
 
     # ---- Internal ----
