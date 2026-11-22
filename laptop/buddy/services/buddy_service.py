@@ -160,7 +160,10 @@ VOICE_GAP_SECONDS = 6.0
 # "Thank you" only plays once you've been locked in (looking at the screen
 # AND Terminal / VS Code in front) this long without a break, and never over
 # a line that's still playing. Dropped if the nagging starts again first.
-VOICE_THANKS_GRACE_SECONDS = 1.5
+# Short on purpose (exception to the long graces): it's a reaction to you
+# coming back, and at 1.5 s (+0.5 s for the camera to see you look back) it
+# came 2-3 s late and sounded random. Now about 1 s after you look back.
+VOICE_THANKS_GRACE_SECONDS = 0.5
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
