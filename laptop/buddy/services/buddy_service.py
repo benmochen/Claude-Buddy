@@ -155,6 +155,8 @@ class BuddyService:
         self._waiting_for: Optional[BuddyState] = None
         # The line each sound group played last, so _say() doesn't repeat it.
         self._last_line: Dict[str, str] = {}
+        # How many slaps so far. The phone face shows > < when it goes up.
+        self._slaps = 0
 
     # ---- Called by the hook routes ----
 
@@ -223,7 +225,8 @@ class BuddyService:
         #   1. You're in another app: bring Claude Code (VS Code) to the front.
         #   2. You're already in VS Code: undo the files Claude changed in its
         #      latest turn.
-        # The board already showed "> <" on its own.
+        # The phone face shows "> <" when it sees this counter go up.
+        self._slaps += 1
         if not self._focuser.is_in_front():
             if self._focuser.focus():
                 return "focused"
@@ -289,6 +292,7 @@ class BuddyService:
             "watching_camera": watching,
             "nagging": self._nagging,
             "distracted": self._detector.is_distracted(),
+            "slaps": self._slaps,
         }
 
     # ---- Watching the camera while Claude waits for you ----

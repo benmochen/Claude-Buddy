@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from buddy.api import button, camera, hooks, mood, status
@@ -85,11 +85,41 @@ async def no_stale_page(request, call_next):
     # Make the browser check for a newer copy on every load (a cheap 304 when
     # nothing changed), so an updated page never shows up as the old one.
     response = await call_next(request)
-    if request.url.path == "/" or request.url.path.startswith("/static/"):
+    path = request.url.path
+    if path == "/" or path == "/face" or path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+# Addresses that mean "this laptop itself".
+LOCAL_CLIENTS = ("127.0.0.1", "::1", "localhost")
+
+
+@app.middleware("http")
+async def network_can_only_view_face(request, call_next):
+    # To let the phone reach the face page, the server listens on the Wi-Fi
+    # network (uvicorn --host 0.0.0.0). Then ANY device on that Wi-Fi could
+    # call it, and on hackathon Wi-Fi that's a room full of strangers. So
+    # other devices may only GET the face page, its files and /status.
+    # Everything else (hooks, /slap = undo your files, /button = type into
+    # Claude, /mood, /messages, /calibrate) only works from this laptop.
+    client = request.client.host if request.client else ""
+    if client in LOCAL_CLIENTS:
+        return await call_next(request)
+    path = request.url.path
+    viewing_face = path == "/face" or path == "/status" or path.startswith("/static/")
+    if request.method == "GET" and viewing_face:
+        return await call_next(request)
+    logging.getLogger(__name__).warning("Refused %s %s from %s", request.method, path, client)
+    return JSONResponse({"detail": "only the face page is reachable from other devices"}, status_code=403)
 
 
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/face", include_in_schema=False)
+async def face() -> FileResponse:
+    # The buddy's face for a phone in the toy: http://<laptop IP>:8765/face
+    return FileResponse(STATIC_DIR / "face.html")

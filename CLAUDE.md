@@ -34,6 +34,11 @@ button presses.
   - `buddy/api/mood.py`: POST /mood, GET/PUT/DELETE /messages (used by the mood page)
   - `buddy/messages.py`: MessageStore, the editable LCD text per mood (16 chars, printable ASCII)
   - `buddy/static/`: the mood page, served at http://127.0.0.1:8765/
+  - `buddy/static/face.html` + `face.js`: THE FACE (replaces the TFT, Nov 21). A phone in the toy opens
+    http://<laptop Wi-Fi IP>:8765/face: orange canvas, black pixel eyes, same shapes/animations as
+    the old face.c (normal blink+glance, happy ^ ^ bounce, sad, ouch > < shake, closed eyes when the
+    laptop is unreachable). Polls /status every 250 ms; state -> face like FACE_FOR_STATE; a rising
+    `slaps` counter in /status shows > < for 1.5 s.
   - `buddy/api/camera.py`: POST /calibrate (re-measure the "working" head position, 3 s)
   - `buddy/api/button.py`: POST /button (redo button by curl; the STM32 button calls the same
     service method through serial_output). POST /slap (fake head slap). Replies {"result": ...}
@@ -75,7 +80,11 @@ button presses.
 
 ## Running it (user's Mac, project at ~/Documents/desk-buddy)
 
-- Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --port 8765`
+- Terminal 1: `cd ~/Documents/desk-buddy/laptop && source .venv/bin/activate && uvicorn buddy.main:app --host 0.0.0.0 --port 8765`
+  (`--host 0.0.0.0` so the phone face can connect; laptop IP: `ipconfig getifaddr en0`. A middleware in
+  main.py only lets OTHER devices GET /face, /static/*, /status; everything else is 403 unless it comes
+  from 127.0.0.1, because hackathon Wi-Fi is shared. If the Wi-Fi blocks device-to-device traffic,
+  use the phone's Personal Hotspot with the laptop joined to it.)
   Env vars in front: `BUDDY_QUIET=1` prints `[PLAY] <file>` instead of playing sounds;
   `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1;
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port;
