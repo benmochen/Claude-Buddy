@@ -22,11 +22,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#D97757">
+  <meta name="theme-color" content="#FF3C00">
   <title>Buddy Face</title>
   <style>
     /* The whole page is orange, no scrollbars, no margins. */
-    html, body { margin: 0; height: 100%; background: #D97757; overflow: hidden; }
+    html, body { margin: 0; height: 100%; background: #FF3C00; overflow: hidden; }
     /* The canvas covers the whole screen. */
     canvas { display: block; width: 100vw; height: 100vh; }
     /* Small grey dot in a corner while the laptop can't be reached. */
@@ -43,7 +43,7 @@
     // ---- Look (same numbers as the firmware's face.c) ----
     const VIRTUAL_W = 320;          // the imaginary screen we draw on
     const VIRTUAL_H = 240;
-    const BG = "#D97757";           // Claude orange
+    const BG = "#FF3C00";           // bright orange background
     const EYE = "#000000";          // black eyes
     const EYE_W = 28;               // normal eye width
     const EYE_H = 64;               // normal eye height
@@ -53,7 +53,7 @@
     const CY = VIRTUAL_H / 2;                   // both eyes are vertically centred
     // Move the eyes this much closer together than "at the screen edges".
     // Each eye moves in by half of it. Change and reload the page to adjust.
-    const EYES_CLOSER_CM = 4;
+    const EYES_CLOSER_CM = 5;
     // Recent iPhones show about 60 CSS pixels per real centimetre
     // (around 153 per inch). Approximate, but close for all current iPhones.
     const CSS_PX_PER_CM = 60;
