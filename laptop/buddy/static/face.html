@@ -88,11 +88,13 @@
     const soundHint = document.getElementById("soundHint");
 
     // ---- Voice ----
-    // One audio player, reused for every clip: once a tap has started it,
-    // the phone lets it play again later without another tap.
-    const player = new Audio();
-    let soundOn = false;            // true once a tap has unlocked the player
-    let unlocking = false;          // true while a tap is unlocking it
+    // Uses the Web Audio system. iPhones only let a page make sound after one
+    // tap; Web Audio then stays allowed, so every later clip plays by itself
+    // when the laptop orders it (no more taps).
+    let audioCtx = null;            // the Web Audio "sound card", made on the first tap
+    const clipBuffers = {};         // clip name -> promise of its decoded sound
+    let currentSource = null;       // the clip playing now, to cut it off
+    let playToken = 0;              // goes up per play/stop, so a slow download can't play late
     let lastSoundId = null;         // sound_id from the laptop, to spot new orders
 
     // ---- Face state ----
@@ -290,23 +292,73 @@
     }
 
     function unlockSound() {
-      // Must run inside a tap. Plays a clip muted for an instant, which is
-      // what makes the phone allow this player to make sound from now on.
-      if (soundOn || unlocking) return;
-      unlocking = true;                                 // one try at a time
-      player.muted = true;
-      player.src = "/face/sounds/thanks.mp3";
-      player.play().then(() => {
-        player.pause();
-        player.muted = false;
-        soundOn = true;
-        unlocking = false;
-        soundHint.style.display = "none";
-        preloadClips();
+      // Must run inside a tap: that is the only moment iPhones allow it.
+      // Safe to call several times (one tap can send both touchend and click).
+      if (audioCtx === null) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+        try {
+          // iOS 17+: play even when the ring/silent switch is on silent.
+          if (navigator.audioSession) navigator.audioSession.type = "playback";
+        } catch (error) {
+          // Older iOS: turn the silent switch off instead.
+        }
+      }
+      // Play one silent sample right now, still inside the tap. This is what
+      // makes the phone allow sound from this page from now on.
+      const silence = audioCtx.createBuffer(1, 1, 22050);
+      const source = audioCtx.createBufferSource();
+      source.buffer = silence;
+      source.connect(audioCtx.destination);
+      source.start(0);
+      audioCtx.resume().then(() => {
+        updateSoundHint();
+        preloadClips();                             // download every clip now
       }).catch(() => {
-        unlocking = false;
-        player.muted = false;                           // try again on the next tap
-        soundHint.textContent = "Sound blocked, tap again";
+        updateSoundHint();                          // still off: the hint stays
+      });
+    }
+
+    function loadClip(name) {
+      // Downloads and decodes /face/sounds/<name>.mp3 once; later calls reuse it.
+      if (!clipBuffers[name]) {
+        clipBuffers[name] = fetch("/face/sounds/" + name + ".mp3")
+          .then((response) => {
+            if (!response.ok) throw new Error("status " + response.status);
+            return response.arrayBuffer();
+          })
+          .then((bytes) => audioCtx.decodeAudioData(bytes))
+          .catch((error) => {
+            delete clipBuffers[name];               // try the download again next time
+            throw error;
+          });
+      }
+      return clipBuffers[name];
+    }
+
+    function stopClip() {
+      // Cut off the clip playing now, if any.
+      playToken += 1;                               // a clip still downloading won't start
+      if (currentSource !== null) {
+        try { currentSource.stop(); } catch (error) { /* already finished */ }
+        currentSource = null;
+      }
+    }
+
+    function playClip(name) {
+      // name is the clip to play, or null for "stop talking".
+      stopClip();
+      if (!name || !soundReady()) return;
+      const myToken = playToken;
+      loadClip(name).then((buffer) => {
+        if (myToken !== playToken) return;          // another order came in meanwhile
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start(0);
+        currentSource = source;
+      }).catch(() => {
+        // Download failed: nothing to play. The next order tries again.
       });
     }
 
@@ -342,21 +394,20 @@
 
     // Tapping the screen turns sound on, and asks for full screen (works on
     // Android; on iPhone use "Add to Home Screen" instead).
-    // iPhone Safari often doesn't pass taps on a plain canvas up to the page,
-    // so the canvas and the hint listen themselves, for both touch and click.
-    // (unlockSound ignores the extra calls.)
-    canvas.addEventListener("touchend", unlockSound);
-    soundHint.addEventListener("touchend", unlockSound);
-    soundHint.addEventListener("click", unlockSound);
-    canvas.addEventListener("click", () => {
+    function onTap() {
       unlockSound();
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
       }
       keepAwake();
     }
-    document.addEventListener("touchend", onTap);
-    document.addEventListener("click", onTap);
+    // iPhone Safari often doesn't pass taps on a plain canvas up to the page,
+    // so the canvas and the hint listen themselves, for both touch (phones)
+    // and click (computers). A tap that sends both just unlocks twice, harmless.
+    canvas.addEventListener("touchend", onTap);
+    canvas.addEventListener("click", onTap);
+    soundHint.addEventListener("touchend", onTap);
+    soundHint.addEventListener("click", onTap);
 
     window.addEventListener("resize", resize);  // phone rotated
     resize();
