@@ -80,8 +80,8 @@ async def lifespan(app: FastAPI):
 
 async def _print_camera_forever() -> None:
     # Prints the camera's verdict every 0.5 s, for example:
-    #   [camera 09:41:07] LOOKING      (ok)
-    #   [camera 09:41:08] NOT LOOKING  (head down)
+    #   [camera 09:41:07] LOOKING      ok            down  +2.1/10  turn  1.0/30  eyes +0.02/0.35  lids +0.05/0.35
+    #   [camera 09:41:08] NOT LOOKING  head down     down +14.3/10  turn  2.0/30  eyes +0.10/0.35  lids +0.30/0.35
     # "ok" or the reason comes from the latest frame ("head down", "head
     # turned", "eyes down", "eyelids down", "no face", "calibrating").
     detector = get_detector()
@@ -91,7 +91,10 @@ async def _print_camera_forever() -> None:
         else:
             verdict = "NOT LOOKING"
         clock = time.strftime("%H:%M:%S")
-        print(f"[camera {clock}] {verdict}  ({detector.latest_reason()})", flush=True)
+        reason = detector.latest_reason()
+        # The measured numbers next to their limits (empty without a face).
+        numbers = detector.latest_numbers()
+        print(f"[camera {clock}] {verdict}  {reason:<13} {numbers}", flush=True)
         await asyncio.sleep(0.5)
 
 

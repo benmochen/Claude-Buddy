@@ -245,6 +245,23 @@ class AttentionDetector:
                 return "no frame yet"
             return self._latest.reason
 
+    def latest_numbers(self) -> str:
+        # The latest frame's measurements next to their limits, compared with
+        # the calibrated working position. For BUDDY_SHOW_CAMERA=1, e.g.
+        # "down +4.1/10 turn 2.0/30 eyes +0.03/0.35 lids +0.12/0.35"
+        with self._lock:
+            reading = self._latest
+        if reading is None or not reading.face_found or not self.is_calibrated():
+            return ""
+        down = _angle_difference(reading.pitch, self._base_pitch)
+        turn = abs(_angle_difference(reading.yaw, self._base_yaw))
+        eyes = reading.eyes_down - self._base_eyes
+        lids = reading.eyelids - self._base_lids
+        return (f"down {down:+5.1f}/{HEAD_DOWN_LIMIT_DEGREES:.0f}  "
+                f"turn {turn:4.1f}/{YAW_LIMIT_DEGREES:.0f}  "
+                f"eyes {eyes:+.2f}/{EYES_EXTRA_LIMIT}  "
+                f"lids {lids:+.2f}/{EYES_EXTRA_LIMIT}")
+
     # ---- Background thread ----
 
     def _loop(self) -> None:

@@ -23,3 +23,6 @@ class AlwaysDistracted:
 
     def latest_reason(self) -> str:
         return "no camera"
+
+    def latest_numbers(self) -> str:
+        return ""
