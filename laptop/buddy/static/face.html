@@ -33,7 +33,8 @@
     /* The whole page is orange, no scrollbars, no margins. */
     html, body { margin: 0; height: 100%; background: #FF3C00; overflow: hidden; }
     /* The canvas covers the whole screen. */
-    canvas { display: block; width: 100vw; height: 100vh; }
+    /* cursor: pointer makes iPhone Safari treat the canvas as tappable. */
+    canvas { display: block; width: 100vw; height: 100vh; cursor: pointer; }
     /* Small grey dot in a corner while the laptop can't be reached. */
     #offline {
       position: fixed; right: 12px; bottom: 12px; width: 14px; height: 14px;
@@ -91,6 +92,7 @@
     // the phone lets it play again later without another tap.
     const player = new Audio();
     let soundOn = false;            // true once a tap has unlocked the player
+    let unlocking = false;          // true while a tap is unlocking it
     let lastSoundId = null;         // sound_id from the laptop, to spot new orders
 
     // ---- Face state ----
@@ -289,17 +291,21 @@
     function unlockSound() {
       // Must run inside a tap. Plays a clip muted for an instant, which is
       // what makes the phone allow this player to make sound from now on.
-      if (soundOn) return;
+      if (soundOn || unlocking) return;
+      unlocking = true;                                 // one try at a time
       player.muted = true;
       player.src = "/face/sounds/thanks.mp3";
       player.play().then(() => {
         player.pause();
         player.muted = false;
         soundOn = true;
+        unlocking = false;
         soundHint.style.display = "none";
         preloadClips();
       }).catch(() => {
+        unlocking = false;
         player.muted = false;                           // try again on the next tap
+        soundHint.textContent = "Sound blocked, tap again";
       });
     }
 
@@ -330,7 +336,13 @@
 
     // Tapping the screen turns sound on, and asks for full screen (works on
     // Android; on iPhone use "Add to Home Screen" instead).
-    document.addEventListener("click", () => {
+    // iPhone Safari often doesn't pass taps on a plain canvas up to the page,
+    // so the canvas and the hint listen themselves, for both touch and click.
+    // (unlockSound ignores the extra calls.)
+    canvas.addEventListener("touchend", unlockSound);
+    soundHint.addEventListener("touchend", unlockSound);
+    soundHint.addEventListener("click", unlockSound);
+    canvas.addEventListener("click", () => {
       unlockSound();
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
