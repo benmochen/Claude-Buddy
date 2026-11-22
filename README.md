@@ -92,5 +92,5 @@ curl -X POST http://127.0.0.1:8765/knock   # knock twice
 
 ## Credits
 
-Built at a hackathon in November 2026 by Ben Mo Chen, Tyler, and edi0328.
+Built at a hackathon in November 2026 by Ben Mo, Tyler, Cyprien and Edison.
 Voice lines made with [ElevenLabs](https://elevenlabs.io).
