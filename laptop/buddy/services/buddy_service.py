@@ -142,6 +142,21 @@ REPEAT_EVERY_SECONDS = 12
 # Same 2 s the camera waits before saying "distracted".
 OTHER_APP_GRACE_SECONDS = 2.0
 
+# ---- Voice grace periods (Nov 22). The STATE and the face change exactly as
+# before; only the VOICE waits. Every one is CONTINUOUS: if the condition
+# breaks even once, the count starts again from zero. ----
+# A nag line only plays once you've been NOT locked in (looking away, or
+# another app in front) for this long without a break. Until then the line
+# waits (and is dropped if you come back).
+VOICE_NAG_GRACE_SECONDS = 4.0
+# No nag line in the first seconds after Claude finished / asked, so "Come
+# look" isn't followed straight away by a guilt trip.
+VOICE_QUIET_AFTER_DONE_SECONDS = 4.0
+# "Thank you" only plays once you've been locked in (looking at the screen
+# AND Terminal / VS Code in front) this long without a break, and never over
+# a line that's still playing. Dropped if the nagging starts again first.
+VOICE_THANKS_GRACE_SECONDS = 1.5
+
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is
 # enough to react fast without busy-looping.
@@ -226,6 +241,10 @@ class BuddyService:
         # Needed because ANNOYED/YELLING look the same either way, but the
         # button must never type into a permission menu.
         self._waiting_for: Optional[BuddyState] = None
+        # Voice lines waiting for their grace period (see VOICE_*): a nag
+        # group ("annoyed", "yelling"...) and a thanks group, or None.
+        self._pending_nag: Optional[str] = None
+        self._pending_thanks: Optional[str] = None
         # The line each sound group played last, so _say() doesn't repeat it.
         self._last_line: Dict[str, str] = {}
         # Lines Claude wrote in its latest turn (set when it finishes).
@@ -522,6 +541,8 @@ class BuddyService:
         self._nagging = False
         self._yelled = False
         self._waiting_for = None
+        self._pending_nag = None                 # forget lines still waiting
+        self._pending_thanks = None
 
     async def _watch(self, waiting_state: BuddyState) -> None:
         # waiting_state: DONE or NEEDS_YOU, which picks the lines.
@@ -542,6 +563,9 @@ class BuddyService:
             last_nag_at = 0.0      # when we last spoke
             next_step = 0          # index of the next step in `steps`
             other_app_since = 0.0  # when another app came to the front, 0 = work app in front
+            watch_started_at = time.monotonic()  # when Claude finished / asked
+            away_since = 0.0       # voice: not locked in without a break since, 0 = locked in now
+            back_since = 0.0       # voice: locked in without a break since, 0 = not locked in now
 
             while True:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
@@ -551,6 +575,34 @@ class BuddyService:
                 # thread because it runs two small macOS commands.
                 work_in_front = await asyncio.to_thread(self._focuser.is_in_front)
                 looking = not self._detector.is_distracted()
+
+                # ---- Voice grace periods (the state below is unchanged) ----
+                # "Locked in right now": looking at the screen (no looking-away
+                # frame in the last 0.5 s) AND the work app in front. Two
+                # continuous timers; any break resets them.
+                locked_now = self._detector.is_looking_now() and work_in_front
+                if locked_now:
+                    away_since = 0.0
+                    if back_since == 0.0:
+                        back_since = now
+                else:
+                    back_since = 0.0
+                    if away_since == 0.0:
+                        away_since = now
+                if not self._speaker.is_busy():
+                    # A "thank you" waiting for you to stay back 1.5 s.
+                    if self._pending_thanks is not None and not self._nagging:
+                        if back_since > 0.0 and now - back_since >= VOICE_THANKS_GRACE_SECONDS:
+                            self._say(self._pending_thanks)
+                            self._pending_thanks = None
+                    # A nag line waiting for 4 s of you being away without a
+                    # break (and never in the first 4 s after Claude finished).
+                    elif self._pending_nag is not None and self._nagging:
+                        away_long_enough = away_since > 0.0 and now - away_since >= VOICE_NAG_GRACE_SECONDS
+                        quiet_over = now - watch_started_at >= VOICE_QUIET_AFTER_DONE_SECONDS
+                        if away_long_enough and quiet_over:
+                            self._speak_nag(self._pending_nag)
+                            self._pending_nag = None
 
                 if self._nagging:
                     # Back for real: looking at the screen AND the work app in
@@ -577,6 +629,7 @@ class BuddyService:
                         continue
                     self._nagging = True
                     self._yelled = False
+                    self._pending_thanks = None        # leaving again: no late "thank you"
                     nag_started_at = now
                     next_step = 0
                     logger.info("Not locked in, starting to nag")
@@ -611,7 +664,14 @@ class BuddyService:
 
     def _calm_down(self, waiting_state: BuddyState) -> None:
         # Called by the watch loop when you're locked in again while it nags.
-        self._thank_and_settle(waiting_state, self._yelled, "nag")
+        # The state goes back right away; the "thank you" waits in
+        # _pending_thanks until you've stayed back VOICE_THANKS_GRACE_SECONDS.
+        if self._yelled:
+            self._pending_thanks = "thanks_finally"
+        else:
+            self._pending_thanks = "thanks"
+        self._pending_nag = None                  # a nag line that never got said: drop it
+        self._set_state(waiting_state, self._messages.get(waiting_state), "nag")
         self._nagging = False
         self._yelled = False
 
@@ -625,13 +685,17 @@ class BuddyService:
         self._set_state(waiting_state, self._messages.get(waiting_state), source)
 
     def _nag(self, step: EscalationStep) -> None:
-        # If the camera sees you looking at the screen RIGHT NOW (no 2 s wait,
-        # see is_looking_now), you're not on your phone but in another app:
-        # use the "<group>_app" lines (if that group exists), so it never says
-        # "phone" while you browse, and never "another tab" while you're on
-        # your phone.
+        # The mood changes now (face on the phone); the voice line waits in
+        # _pending_nag for its grace period (see the watch loop). A newer line
+        # replaces one that's still waiting.
         self._set_state(step.state, step.lcd_text, "nag")
-        group = step.sound
+        self._pending_nag = step.sound
+
+    def _speak_nag(self, group: str) -> None:
+        # If the camera sees you looking at the screen RIGHT NOW (see
+        # is_looking_now), you're not on your phone but in another app: use the
+        # "<group>_app" lines (if that group exists), so it never says "phone"
+        # while you browse, and never "another tab" while you're on your phone.
         if self._detector.is_looking_now() and group + "_app" in SOUND_GROUPS:
             group = group + "_app"
         logger.info("Nag: %s lines (camera: %s)", group, self._detector.latest_reason())

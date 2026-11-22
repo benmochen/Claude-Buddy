@@ -183,6 +183,15 @@ button presses.
   in that time (SLAP / KNOCK / MAYBE) = yes -> new chat (never undo/redo); nothing = no. Replayed
   on all recordings: every known single tap stays a single tap; fast double taps -> MAYBE or KNOCK.
   The board's 1 s cooldown after MAYBE ignores a yes-tap in the first ~1 s after the question.
+- Voice grace periods (Nov 22; the STATE and face keep their old timing, only the VOICE waits; each
+  is CONTINUOUS, any break resets it; constants VOICE_* in buddy_service.py):
+  - nag line: only after 4 s of being not locked in without a break (VOICE_NAG_GRACE_SECONDS); the
+    line waits in _pending_nag (a newer step's line replaces it) and is dropped if you come back.
+  - no nag line in the first 4 s after Stop / permission (VOICE_QUIET_AFTER_DONE_SECONDS).
+  - "thank you": only after 1.5 s locked in without a break (looking now AND work app in front),
+    never over a playing line; dropped if the nagging restarts first (_pending_thanks).
+  - Side effect: glancing back and forth (never 4 s away) lets the mood climb to YELLING silently,
+    so the first spoken line can be a yell.
 - Other voice moments: Stop -> `yay`; Notification (permission) -> `needs_you` right away.
 - Button (POST /button, or `BTN` from the STM32; the physical button is gone): old redo path,
   only in DONE, ANNOYED, YELLING, never while nagging about NEEDS_YOU. Plays `slam`, types
