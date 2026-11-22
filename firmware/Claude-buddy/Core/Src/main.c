@@ -174,6 +174,8 @@ int main(void)
     } else if (tap == ACCEL_KNOCK) {
       Face_React(FACE_OUCH, OUCH_REACT_MS);
       Link_SendKnock(strength);
+    } else if (tap == ACCEL_MAYBE) {
+      Link_SendMaybe(strength);
     }
 
     /* Blue USER button cycles moods: normal -> happy -> sad -> ouch. */

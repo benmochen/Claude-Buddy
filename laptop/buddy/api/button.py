@@ -31,3 +31,10 @@ async def knock(service: BuddyService = Depends(get_buddy_service)) -> dict:
     # Fake a knock-knock without the board: opens another Claude chat in a new tmux window.
     result = await service.on_knock()
     return {"result": result}
+
+
+@router.post("/maybe")
+async def maybe(service: BuddyService = Depends(get_buddy_service)) -> dict:
+    # Fake an unsure tap without the board: the buddy asks "New chat?" for 4 s.
+    result = await service.on_maybe()
+    return {"result": result}

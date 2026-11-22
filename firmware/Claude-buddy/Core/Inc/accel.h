@@ -19,7 +19,8 @@ uint8_t Accel_Init(void);
 typedef enum {
   ACCEL_NOTHING = 0,   /* no new tap (or still waiting to see if a 2nd knock comes) */
   ACCEL_SLAP,          /* one tap                                                   */
-  ACCEL_KNOCK          /* knock-knock: two taps about half a second apart          */
+  ACCEL_KNOCK,         /* knock-knock: two taps about half a second apart          */
+  ACCEL_MAYBE          /* unsure: probably a FAST knock-knock (laptop asks first)  */
 } AccelEvent;
 
 /* Call every main-loop pass with HAL_GetTick(). Reads a new sample every few

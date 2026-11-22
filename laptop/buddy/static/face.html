@@ -41,6 +41,11 @@
       border-radius: 50%; background: #555; display: none;
     }
     /* "Tap for sound" note, shown until the phone allows sound. */
+    /* "New chat? Tap = yes (3)" while the buddy waits for a yes-tap. */
+    #question {
+      position: fixed; left: 0; right: 0; top: 10%; text-align: center;
+      font: 800 9vmin -apple-system, sans-serif; color: #000; display: none;
+    }
     #soundHint {
       position: fixed; left: 0; right: 0; bottom: 16px; text-align: center;
       font: 600 18px -apple-system, sans-serif; color: #000; opacity: 0.6;
@@ -51,6 +56,7 @@
   <canvas id="face"></canvas>
   <div id="offline" title="Can't reach the laptop"></div>
   <div id="soundHint">Tap for sound</div>
+  <div id="question"></div>
   <script>
     // ---- Look (same numbers as the firmware's face.c) ----
     const VIRTUAL_W = 320;          // the imaginary screen we draw on
@@ -86,6 +92,7 @@
     const ctx = canvas.getContext("2d");
     const offlineDot = document.getElementById("offline");
     const soundHint = document.getElementById("soundHint");
+    const questionBox = document.getElementById("question");
 
     // ---- Voice ----
     // Uses the Web Audio system. iPhones only let a page make sound after one
@@ -138,6 +145,15 @@
           setFace("ouch", now);
         }
         lastReactionId = data.reaction_id;
+
+        // The buddy is asking something ("New chat?"): show it with the
+        // seconds left. A tap on the TOY (not the phone) answers yes.
+        if (data.question) {
+          questionBox.textContent = data.question + " Tap me = yes (" + data.question_left + ")";
+          questionBox.style.display = "block";
+        } else {
+          questionBox.style.display = "none";
+        }
 
         // A new sound order: stop the clip playing, then play the new one
         // (sound is null for "stop talking"). On the first answer only

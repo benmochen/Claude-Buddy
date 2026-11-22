@@ -49,8 +49,15 @@ async def lifespan(app: FastAPI):
         future = asyncio.run_coroutine_threadsafe(get_buddy_service().on_knock(), loop)
         future.add_done_callback(_log_knock_result)
 
-    # Opens the STM32's serial port (if plugged in) and starts listening for BTN, SLAP and KNOCK.
-    get_output().start(on_button=on_board_button, on_slap=on_board_slap, on_knock=on_board_knock)
+    def on_board_maybe() -> None:
+        # Same hand-over, for "MAYBE" (unsure tap: the buddy asks "New chat?").
+        future = asyncio.run_coroutine_threadsafe(get_buddy_service().on_maybe(), loop)
+        future.add_done_callback(_log_knock_result)
+
+    # Opens the STM32's serial port (if plugged in) and starts listening for
+    # BTN, SLAP, KNOCK and MAYBE.
+    get_output().start(on_button=on_board_button, on_slap=on_board_slap,
+                       on_knock=on_board_knock, on_maybe=on_board_maybe)
     # Print the address to type on the phone.
     logging.getLogger(__name__).info(
         "Phone face: open http://%s:8765/face on the phone (same Wi-Fi or hotspot)",

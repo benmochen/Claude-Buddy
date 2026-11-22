@@ -160,7 +160,14 @@ button presses.
   0.25 and 0.8 s after it. Measured Nov 21 on the toy: a single tap's spring bounce comes back at
   0.15-0.2 s at up to 60 % of the tap, then stays < ~900 mg; a deliberate second knock at
   0.25-0.4 s was 3000-3800 mg. A FAST double tap (0.15-0.2 s) looks like the bounce and can't be
-  detected. Replayed on the recordings: 3/3 knocks and 8/8 single taps sorted correctly.
+  detected as a knock, so the board flags it:
+- Unsure tap (`MAYBE:<mg>`, or POST /maybe): a jolt 0.1-0.25 s after the tap of at least 80 % of
+  the tap (MAYBE_RATIO; single-tap bounce measured <= 64 % over 16 taps, fast second tap 94-181 %).
+  The buddy asks "New chat?" (phone shows "New chat? Tap me = yes (4)", voice `confirm_new_chat`
+  not recorded) for CONFIRM_SECONDS = 4 (+1 s grace because a tap is reported 0.8 s late). Any tap
+  in that time (SLAP / KNOCK / MAYBE) = yes -> new chat (never undo/redo); nothing = no. Replayed
+  on all recordings: every known single tap stays a single tap; fast double taps -> MAYBE or KNOCK.
+  The board's 1 s cooldown after MAYBE ignores a yes-tap in the first ~1 s after the question.
 - Other voice moments: Stop -> `yay`; Notification (permission) -> `needs_you` right away.
 - Button (POST /button, or `BTN` from the STM32; the physical button is gone): old redo path,
   only in DONE, ANNOYED, YELLING, never while nagging about NEEDS_YOU. Plays `slam`, types
@@ -247,7 +254,7 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
 - laptop -> board: `F:IDLE` and `F:WORK` (normal), `F:DONE` (happy), `F:NEED` (sad),
   `F:MAD` (ouch), `T:<text>` (accepted, not shown: the TFT has no text yet), `PING` (board replies `PONG`),
   `S:<clip>` (play voice clip), `S:STOP` (still in the firmware, no longer sent by the laptop)
-- board -> laptop: `KNOCK:<mg>` (knock-knock), `BTN` (undo button; the board also shows `> <` for 1.5 s on its own),
+- board -> laptop: `KNOCK:<mg>` (knock-knock), `MAYBE:<mg>` (unsure, laptop asks), `BTN` (undo button; the board also shows `> <` for 1.5 s on its own),
   `SLAP:<mg>` (head slapped, strength in milli-g; also `> <`), `ERR:ACCEL` (accelerometer
   missing at startup, logged as a warning)
 - State to face mapping lives in `FACE_FOR_STATE` in serial_output.py:

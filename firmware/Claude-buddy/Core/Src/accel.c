@@ -17,7 +17,12 @@
  *      after 0.25 s. A deliberate second knock 0.25-0.4 s later was
  *      3000-3800 mg. A FAST double tap (second tap at 0.15-0.2 s) looks just
  *      like the spring bounce, so it can't be detected: knock with a beat.
- *   5. After a slap or knock-knock the head keeps wobbling on the springs for
+ *      Unsure: a FAST knock-knock puts its second tap 0.1-0.25 s after the
+ *      first, where a single tap's spring bounce is. Measured: the bounce is
+ *      at most 64 % of the tap (16 single taps), a fast second tap 94-181 %.
+ *      So a jolt there of at least MAYBE_RATIO of the first tap = "MAYBE"
+ *      (probably a fast knock-knock): the laptop asks before doing anything.
+ *   5. After a slap, knock-knock or maybe the head keeps wobbling on the springs for
  *      a while, which would look like more taps, so taps are ignored for
  *      COOLDOWN_MS.
  *
@@ -45,7 +50,9 @@
 #define SAMPLE_MS          5          /* read a sample every 5 ms (200 per second)         */
 #define SLAP_THRESHOLD_MG  700.0f     /* jolt size that counts as a slap (0.7 g)           */
 #define COOLDOWN_MS        1000       /* ignore the wobbling for 1 s after a decision      */
+#define FIRST_TAP_MS       100        /* the first tap's own spike lasts this long          */
 #define KNOCK_WINDOW_START_MS 250     /* second knock: not before (spring bounce until then) */
+#define MAYBE_RATIO        0.80f      /* fast jolt >= 80 % of the tap: maybe a fast knock   */
 #define KNOCK_WINDOW_END_MS   800     /* second knock: not after; a single tap is reported then */
 #define KNOCK_MIN_MG       1500.0f    /* second knock at least this big (bounce stays < ~900) */
 #define KNOCK_MIN_RATIO    0.35f      /* ...and at least 35 % of the first tap              */
@@ -58,7 +65,8 @@ static uint32_t last_sample;          /* HAL_GetTick() of the last read         
 static uint32_t last_event;           /* HAL_GetTick() of the last slap / knock-knock       */
 static uint8_t  waiting;              /* 1 = a tap happened, waiting to see if a 2nd follows */
 static uint32_t first_tap_at;         /* HAL_GetTick() of that first tap                    */
-static float    first_tap_mg;         /* its biggest jolt (milli-g)                         */
+static float    first_tap_mg;         /* its biggest jolt in the first 0.1 s (milli-g)      */
+static float    fast_max_mg;          /* biggest jolt 0.1-0.25 s after it (bounce or 2nd tap) */
 
 /* Write one byte into one register of the chip. Returns 1 on success. */
 static uint8_t write_reg(uint8_t reg, uint8_t value)
@@ -121,9 +129,14 @@ AccelEvent Accel_Check(uint32_t now, uint16_t *strength_mg)
   if (waiting) {
     /* A tap happened: was it the first half of a knock-knock? */
     uint32_t elapsed = now - first_tap_at;
-    if (elapsed < KNOCK_WINDOW_START_MS) {
-      /* Still the first tap and its spring bounce: remember the biggest jolt. */
+    if (elapsed < FIRST_TAP_MS) {
+      /* Still the first tap's spike: remember its biggest jolt. */
       if (jolt > first_tap_mg) first_tap_mg = jolt;
+      return ACCEL_NOTHING;
+    }
+    if (elapsed < KNOCK_WINDOW_START_MS) {
+      /* Spring bounce, or a fast second tap: remember the biggest jolt. */
+      if (jolt > fast_max_mg) fast_max_mg = jolt;
       return ACCEL_NOTHING;
     }
     if (jolt >= KNOCK_MIN_MG && jolt >= first_tap_mg * KNOCK_MIN_RATIO) {
@@ -133,10 +146,15 @@ AccelEvent Accel_Check(uint32_t now, uint16_t *strength_mg)
       return ACCEL_KNOCK;
     }
     if (elapsed > KNOCK_WINDOW_END_MS) {
-      waiting = 0;                                /* no second knock: a single tap   */
+      waiting = 0;                                /* no clear second knock           */
       last_event = now;
+      if (fast_max_mg >= first_tap_mg * MAYBE_RATIO && fast_max_mg >= SLAP_THRESHOLD_MG) {
+        /* Too big for a bounce: probably a fast knock-knock. Laptop asks. */
+        *strength_mg = fast_max_mg > 65535.0f ? 65535 : (uint16_t)fast_max_mg;
+        return ACCEL_MAYBE;
+      }
       *strength_mg = first_tap_mg > 65535.0f ? 65535 : (uint16_t)first_tap_mg;
-      return ACCEL_SLAP;
+      return ACCEL_SLAP;                          /* a single tap                    */
     }
     return ACCEL_NOTHING;                         /* keep waiting                    */
   }
@@ -146,5 +164,6 @@ AccelEvent Accel_Check(uint32_t now, uint16_t *strength_mg)
   waiting = 1;                                    /* a tap: wait for a second one    */
   first_tap_at = now;
   first_tap_mg = jolt;
+  fast_max_mg = 0.0f;
   return ACCEL_NOTHING;
 }

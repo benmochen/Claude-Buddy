@@ -84,6 +84,8 @@ SOUND_GROUPS: Dict[str, List[str]] = {
     "nothing_to_undo": ["nothing_to_undo"],  # "Nothing to undo. I didn't touch anything."
     # A head slap while Claude is still working.
     "busy": ["busy_1", "busy_2"],  # (not recorded) "I'm still working. Hold on."
+    # Unsure tap (probably a fast knock-knock): asks before opening a chat.
+    "confirm_new_chat": ["confirm_new_chat"],  # (not recorded) "New chat? Tap me if yes."
     # A knock-knock opened a second chat.
     "new_chat": ["new_chat"],  # (not recorded) "Another one? Fine. New chat."
 }
@@ -135,6 +137,14 @@ WATCH_EVERY_SECONDS = 0.25
 # What the redo button types into Claude Code. One line only: a newline
 # would press Enter halfway through. A bare "redo it" gives Claude nothing
 # to work with, so it asks Claude to find the problems first.
+# An unsure tap (MAYBE from the board) makes the buddy ask "New chat?". A tap
+# within CONFIRM_SECONDS means yes; nothing means no. The board reports a
+# single tap up to 0.8 s late (it waits for a possible second knock), so a
+# tap at the very end of the 4 s still counts for CONFIRM_GRACE_SECONDS more.
+CONFIRM_SECONDS = 4.0
+CONFIRM_GRACE_SECONDS = 1.0
+NEW_CHAT_QUESTION = "New chat?"
+
 REDO_AFTER_UNDO_MESSAGE = (
     "I undid all the file changes from your last answer, so the files are back "
     "to how they were before it. That wasn't good enough. Before redoing it, "
@@ -209,6 +219,10 @@ class BuddyService:
         self._lines_added = 0
         # True once it yelled in the current nagging stretch (for which thanks).
         self._yelled = False
+        # The question shown on the phone ("New chat?") while waiting for a
+        # yes-tap, or None. _ask_until: when the 4 s run out (time.monotonic()).
+        self._asking: Optional[str] = None
+        self._ask_until = 0.0
 
     # ---- Called by the hook routes ----
 
@@ -297,6 +311,9 @@ class BuddyService:
         # The phone face shows "> <" for a moment.
         self._reaction_id += 1
 
+        if self._question_is_open():
+            return await self._answer_yes()
+
         if self._nagging:
             return await self._forgive()
 
@@ -323,6 +340,40 @@ class BuddyService:
         # its conversation). Allowed any time, even while Claude works: that's
         # a good moment to start something else in parallel.
         self._reaction_id += 1                 # phone face shows "> <" for a moment
+        if self._question_is_open():
+            return await self._answer_yes()
+        return await self._open_new_chat()
+
+    async def on_maybe(self) -> str:
+        # The board wasn't sure: probably a fast knock-knock, maybe a single
+        # tap. Ask "New chat?" and wait 4 s: a tap = yes, nothing = no.
+        if self._question_is_open():
+            return await self._answer_yes()          # a tap while asking = yes
+        self._asking = NEW_CHAT_QUESTION
+        self._ask_until = time.monotonic() + CONFIRM_SECONDS
+        self._say("confirm_new_chat")
+        # Forget the question when the time is up (the phone hides it).
+        asyncio.create_task(self._expire_question(self._ask_until))
+        return "asking: new chat? (tap within 4 s = yes)"
+
+    def _question_is_open(self) -> bool:
+        # True while a question is waiting for its yes-tap (plus the grace time).
+        return self._asking is not None and time.monotonic() < self._ask_until + CONFIRM_GRACE_SECONDS
+
+    async def _answer_yes(self) -> str:
+        # A tap while asking "New chat?": yes.
+        self._asking = None
+        logger.info("Answer: yes, opening a new chat")
+        return await self._open_new_chat()
+
+    async def _expire_question(self, until: float) -> None:
+        # Nothing happened within the time: the answer is no.
+        await asyncio.sleep(until + CONFIRM_GRACE_SECONDS - time.monotonic())
+        if self._asking is not None and self._ask_until == until:
+            self._asking = None
+            logger.info("No tap within %d s: not opening a new chat", int(CONFIRM_SECONDS))
+
+    async def _open_new_chat(self) -> str:
         # Bring Terminal forward so you see the new chat.
         await asyncio.to_thread(self._focuser.focus)
         if not await asyncio.to_thread(self._claude_input.open_new_chat):
@@ -406,7 +457,16 @@ class BuddyService:
     def get_face_state(self) -> dict:
         # The little the phone face needs. Kept separate from get_status() so
         # devices on the network see only the mood, not the camera or messages.
-        return {"state": self._state, "reaction_id": self._reaction_id}
+        answer = {"state": self._state, "reaction_id": self._reaction_id}
+        # While asking: the question and the whole seconds left (4, 3, 2, 1).
+        left = self._ask_until - time.monotonic()
+        if self._asking is not None and left > 0:
+            answer["question"] = self._asking
+            answer["question_left"] = int(left) + 1
+        else:
+            answer["question"] = None
+            answer["question_left"] = 0
+        return answer
 
     def get_status(self) -> dict:
         seconds_in_state = time.monotonic() - self._state_changed_at

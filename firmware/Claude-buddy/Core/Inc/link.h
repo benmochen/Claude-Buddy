@@ -41,6 +41,9 @@ void Link_SendSlap(uint16_t strength_mg);
 /* Tell the laptop the head was knocked twice: sends "KNOCK:<strength_mg>". */
 void Link_SendKnock(uint16_t strength_mg);
 
+/* Tell the laptop it's unsure (probably a fast knock-knock): "MAYBE:<strength_mg>". */
+void Link_SendMaybe(uint16_t strength_mg);
+
 /* Send one line of text as it is (a '\n' is added). */
 void Link_SendLine(const char *text);
 
