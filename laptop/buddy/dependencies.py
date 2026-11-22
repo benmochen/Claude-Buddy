@@ -11,6 +11,7 @@ from buddy.checkpoint import TurnCheckpoint
 from buddy.detectors.always_distracted import AlwaysDistracted
 from buddy.messages import MessageStore, default_config_path
 from buddy.outputs.console_output import ConsoleOutput
+from buddy.outputs.phone_audio import PhoneAudio
 from buddy.outputs.serial_output import SerialOutput
 from buddy.outputs.speaker import Speaker
 from buddy.outputs.tmux_typer import TmuxTyper
@@ -46,15 +47,16 @@ if _no_serial:
 else:
     _output = SerialOutput(port=os.environ.get("BUDDY_SERIAL"))
 
-# Where the voice comes out. By default the toy's own speaker when the board
-# is connected (the board plays its copy of the clip), else the laptop.
-# BUDDY_AUDIO=laptop always uses the laptop (afplay), for example if the
-# board's audio wiring fails during the demo.
+# Where the voice comes out. By default the phone in the toy, while its face
+# page has sound on (tapped once); otherwise the laptop (afplay).
+# BUDDY_AUDIO=laptop always uses the laptop, for example if the phone's sound
+# misbehaves during the demo.
+_phone_audio = PhoneAudio()
 _laptop_audio_only = os.environ.get("BUDDY_AUDIO") == "laptop"
-if _no_serial or _laptop_audio_only:
-    _speaker_board = None
+if _laptop_audio_only:
+    _speaker_phone = None
 else:
-    _speaker_board = _output
+    _speaker_phone = _phone_audio
 
 if _no_camera:
     _detector = AlwaysDistracted()
@@ -68,7 +70,7 @@ else:
 # one, because the buddy's state lives inside it.
 _buddy_service = BuddyService(
     output=_output,
-    speaker=Speaker(quiet=_quiet, board=_speaker_board),
+    speaker=Speaker(quiet=_quiet, phone=_speaker_phone),
     detector=_detector,
     # "claude" must match the name in `tmux new -s claude`.
     claude_input=TmuxTyper(session="claude"),
@@ -94,3 +96,8 @@ def get_output():
 def get_detector():
     # main.py starts/stops it with the server; /calibrate recalibrates it.
     return _detector
+
+
+def get_phone_audio() -> PhoneAudio:
+    # The face routes read the sound order from it and mark the phone as seen.
+    return _phone_audio

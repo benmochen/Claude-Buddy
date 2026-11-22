@@ -100,7 +100,9 @@ app.include_router(face.router)
 # /slap, /button, the mood page...) only works from this laptop, because with
 # --host 0.0.0.0 anyone on the same Wi-Fi could otherwise undo your files or
 # type into Claude.
-PUBLIC_PATHS = ("/face", "/face/state")
+PUBLIC_PATHS = ("/face", "/face/state", "/face/sounds")
+# Plus the voice clips: /face/sounds/<name>.mp3
+PUBLIC_PREFIX = "/face/sounds/"
 LOCAL_ADDRESSES = ("127.0.0.1", "::1")
 
 
@@ -109,7 +111,9 @@ async def local_only(request: Request, call_next):
     # request.client.host is the address the request came from.
     client = request.client.host if request.client else ""
     is_local = client in LOCAL_ADDRESSES
-    is_public = request.method == "GET" and request.url.path in PUBLIC_PATHS
+    path = request.url.path
+    is_public_path = path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIX)
+    is_public = request.method == "GET" and is_public_path
     if not is_local and not is_public:
         # 403 = forbidden. Nothing in the app runs for this request.
         return JSONResponse({"detail": "only allowed from the laptop itself"}, status_code=403)

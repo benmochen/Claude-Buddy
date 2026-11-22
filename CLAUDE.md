@@ -9,8 +9,10 @@ speaker and shows an angry face on a 2.8" TFT display. A big "slam" button sends
 
 Claude Code hooks (HTTP) -> FastAPI daemon on the Mac -> (USB serial) -> STM32 -> TFT face
 STM32 button -> (USB serial "BTN") -> daemon -> `tmux send-keys` -> Claude Code
-Daemon -> `S:<clip>` over serial -> STM32 DAC on D7 (PA4) -> 10 uF cap -> speaker jack in the toy
-(falls back to `afplay` on the laptop when the board isn't connected, or with BUDDY_AUDIO=laptop)
+Phone in the toy opens http://<laptop IP>:8765/face: it draws the face AND plays the voice
+(daemon sets a sound order in /face/state, the page plays /face/sounds/<clip>.mp3). Falls back to
+`afplay` on the laptop when no phone with sound on is polling, or always with BUDDY_AUDIO=laptop.
+(The STM32 speaker on D7 was ditched on Nov 21; the firmware audio code is still there, unused.)
 Webcam -> MediaPipe (head angle + eyes) -> daemon decides "looking at the screen or not"
 
 Everything smart runs on the laptop. The STM32 only draws the face and reports
@@ -36,10 +38,16 @@ button presses.
   - `buddy/static/`: the mood page, served at http://127.0.0.1:8765/
   - `buddy/api/face.py` + `buddy/static/face.html`: the phone face (the TFT broke). GET /face is
     the page (canvas eyes, same drawing as firmware face.c, eyes at the screen edges); it polls
-    GET /face/state ({state, reaction_id}) every 0.3 s. reaction_id goes up on each slap and
-    button press, and the page shows `> <` for 1.5 s.
-  - `buddy/main.py` middleware `local_only`: requests from other devices may only GET /face and
-    /face/state (403 for everything else), because the server listens on the network for the phone.
+    GET /face/state ({state, reaction_id, sound_id, sound}) every 0.3 s. reaction_id goes up on
+    each slap and button press, and the page shows `> <` for 1.5 s. The page is also the speaker:
+    "Tap for sound" until tapped once (phones block sound without a tap), then it polls with
+    `?audio=1` and plays /face/sounds/<sound>.mp3 whenever sound_id changes (sound null = stop).
+    GET /face/sounds lists the clips (the page preloads them).
+  - `buddy/outputs/phone_audio.py`: PhoneAudio, the latest sound order (sound_id, sound) and when a
+    page with sound on last polled; is_connected() = polled with audio=1 in the last 2 s.
+  - `buddy/main.py` middleware `local_only`: requests from other devices may only GET /face,
+    /face/state, /face/sounds and /face/sounds/* (403 for everything else), because the server
+    listens on the network for the phone. Clip names are checked against the sounds folder.
   - `buddy/api/camera.py`: POST /calibrate (re-measure the "working" head position, 3 s)
   - `buddy/api/button.py`: POST /button (redo button by curl; the STM32 button calls the same
     service method through serial_output). POST /slap (fake head slap). Replies {"result": ...}
@@ -48,9 +56,9 @@ button presses.
   - `buddy/outputs/serial_output.py`: sends `F:`/`T:` lines to the STM32 (pyserial, auto-finds
     `/dev/cu.usbmodem*`), also prints like ConsoleOutput; reader thread turns `BTN` into
     `on_button_pressed()` via `asyncio.run_coroutine_threadsafe` (wired in main.py lifespan)
-  - `buddy/outputs/speaker.py`: play(name): board connected -> sends `S:<name>` (board plays its
-    built-in copy), busy time from clip lengths measured with `afinfo` at startup; else
-    `afplay sounds/<name>.mp3` (list args, no shell). Cuts off the previous clip (`S:STOP`).
+  - `buddy/outputs/speaker.py`: play(name): phone connected -> PhoneAudio.play(name), busy time
+    from clip lengths measured with `afinfo` at startup (+0.5 s polling delay); else
+    `afplay sounds/<name>.mp3` (list args, no shell). Cuts off the previous clip.
     is_busy(), current_sound(), stop().
     speak(text) (macOS `say`) is no longer used. has_sound(name) checks the .mp3 exists.
   - `buddy/sounds/*.mp3`: voice lines made with ElevenLabs (free plan: non-commercial use,
@@ -90,7 +98,7 @@ button presses.
   `BUDDY_NO_CAMERA=1` uses AlwaysDistracted; `BUDDY_CAMERA=1` picks camera index 1;
   `BUDDY_NO_SERIAL=1` skips the STM32; `BUDDY_SERIAL=/dev/cu.usbmodemXXXX` picks the port;
   `BUDDY_CLAUDE_APP_ID=com.apple.Terminal` changes the Claude Code app (default com.microsoft.VSCode);
-  `BUDDY_AUDIO=laptop` plays the voice on the laptop even with the board connected.
+  `BUDDY_AUDIO=laptop` plays the voice on the laptop even when the phone has sound on.
   Plug the board in BEFORE starting the server (the port is only looked for at startup).
   Look at the screen while it starts (calibration). Recalibrate: `curl -X POST http://127.0.0.1:8765/calibrate`
 - Terminal 2: `cd ~/Documents/desk-buddy && tmux new -s claude`, then `claude` inside it
@@ -149,10 +157,9 @@ button presses.
   uvicorn listens on IPv4 only.
 - Removed the `idle_prompt` Notification matcher: it fires while the user is idle
   after Stop, which would reset the nag timer mid-yell. Stop already covers it.
-- Speaker is on the laptop (`afplay`), cable run into the toy, not the STM32 DAC: far less work,
-  better audio. DAC option was explored (Nov 21): DAC1_OUT1 = PA4 = D7 (TFT DC already moved to
-  D4/PA3 in wiring and firmware, so D7/PA4 is free), screw-terminal 3.5 mm jack via 10 uF cap, clips
-  stored in flash at 8 kHz 8-bit, TIM6 + DMA. Parked by Ben.
+- Voice comes from the phone in the toy (Nov 21), not the STM32 DAC: better sound (full mp3 instead
+  of 8 kHz 8-bit), no wiring, and the phone is already there for the face. The DAC version
+  (D7/PA4, 10 uF cap to a 3.5 mm plug, audio.c) worked on the board but was ditched.
 - Pre-made voice clips instead of live TTS: no internet or credits needed during the demo, and
   ElevenLabs acting (deadpan -> exasperated) is far better than `say`.
 - Redo button injects text with `tmux send-keys` because hooks cannot start a new turn.
@@ -174,7 +181,7 @@ button presses.
   On the Mac: `/dev/cu.usbmodem*`.
 - Display: red "2.8 TFT SPI 240X320 V1.2" module, ILI9341 controller (ID 0x9341 read back),
   XPT2046 touch and SD slot unused. Landscape 320x240.
-- Speaker: "hamburger" mini speaker, 3.5 mm aux into the MacBook headphone jack.
+- Speaker: the phone's own speaker (the phone sits in the toy and shows the face).
 - Slap sensor: onboard LSM6DSL accelerometer (no wiring). The head sits on two springs on the
   legs; the board is in the head, so a slap makes it jolt.
 - Undo/slam button: external button between Arduino D8 (PB2) and GND, internal pull-up,
@@ -219,7 +226,7 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
 
 - laptop -> board: `F:IDLE` and `F:WORK` (normal), `F:DONE` (happy), `F:NEED` (sad),
   `F:MAD` (ouch), `T:<text>` (accepted, not shown: the TFT has no text yet), `PING` (board replies `PONG`),
-  `S:<clip>` (play voice clip), `S:STOP`
+  `S:<clip>` (play voice clip), `S:STOP` (still in the firmware, no longer sent by the laptop)
 - board -> laptop: `BTN` (undo button; the board also shows `> <` for 1.5 s on its own),
   `SLAP:<mg>` (head slapped, strength in milli-g; also `> <`), `ERR:ACCEL` (accelerometer
   missing at startup, logged as a warning)
@@ -251,7 +258,9 @@ sad `/. .\` (small eyes, slanted brows), ouch `> <` (shake). `Face_SetMood` is p
 
 ## Known gaps (keep this list current)
 
-- Phone face: no password; anyone on the same network can VIEW the face and mood (nothing else).
+- Phone face: no password; anyone on the same network can VIEW the face and mood and download the
+  voice clips (nothing else). Phone voice needs one tap after every page load, and the phone
+  screen must stay on (Auto-Lock Never); otherwise the laptop plays the voice.
   Polling every 0.3 s, not pushed. The laptop's address can change when the network changes:
   re-read it from the log.
 

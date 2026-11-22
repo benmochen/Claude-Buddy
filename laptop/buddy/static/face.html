@@ -12,6 +12,11 @@
     NEEDS_YOU          -> sad, with slanted brows
     ANNOYED, YELLING   -> ouch > < (shakes)
   A slap or the undo button also shows > < for 1.5 s (reaction_id changes).
+
+  The phone is also the buddy's speaker. Phones only allow sound after a tap,
+  so the page says "Tap for sound" until the screen is tapped once. After
+  that, each new sound_id in /face/state plays /face/sounds/<sound>.mp3.
+  Until then the laptop plays the voice itself.
 -->
 <html lang="en">
 <head>
@@ -34,11 +39,17 @@
       position: fixed; right: 12px; bottom: 12px; width: 14px; height: 14px;
       border-radius: 50%; background: #555; display: none;
     }
+    /* "Tap for sound" note, shown until the phone allows sound. */
+    #soundHint {
+      position: fixed; left: 0; right: 0; bottom: 16px; text-align: center;
+      font: 600 18px -apple-system, sans-serif; color: #000; opacity: 0.6;
+    }
   </style>
 </head>
 <body>
   <canvas id="face"></canvas>
   <div id="offline" title="Can't reach the laptop"></div>
+  <div id="soundHint">Tap for sound</div>
   <script>
     // ---- Look (same numbers as the firmware's face.c) ----
     const VIRTUAL_W = 320;          // the imaginary screen we draw on
@@ -73,6 +84,14 @@
     const canvas = document.getElementById("face");
     const ctx = canvas.getContext("2d");
     const offlineDot = document.getElementById("offline");
+    const soundHint = document.getElementById("soundHint");
+
+    // ---- Voice ----
+    // One audio player, reused for every clip: once a tap has started it,
+    // the phone lets it play again later without another tap.
+    const player = new Audio();
+    let soundOn = false;            // true once a tap has unlocked the player
+    let lastSoundId = null;         // sound_id from the laptop, to spot new orders
 
     // ---- Face state ----
     let baseFace = "normal";        // the face for the buddy's current state
@@ -100,7 +119,9 @@
     async function poll() {
       try {
         // cache: "no-store" makes sure the phone never shows an old answer.
-        const response = await fetch("/face/state", { cache: "no-store" });
+        // audio=1 tells the laptop "send the voice here" (only once sound works).
+        const url = soundOn ? "/face/state?audio=1" : "/face/state";
+        const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) throw new Error("status " + response.status);
         const data = await response.json();
         offlineDot.style.display = "none";          // connected: hide the grey dot
@@ -112,6 +133,14 @@
           setFace("ouch", now);
         }
         lastReactionId = data.reaction_id;
+
+        // A new sound order: stop the clip playing, then play the new one
+        // (sound is null for "stop talking"). On the first answer only
+        // remember the number, so reloading the page doesn't replay a clip.
+        if (lastSoundId !== null && data.sound_id !== lastSoundId) {
+          playClip(data.sound);
+        }
+        lastSoundId = data.sound_id;
 
         // The buddy's state changed: switch faces (unless a reaction is playing).
         const wanted = FACE_FOR_STATE[data.state] || "normal";
@@ -244,6 +273,49 @@
       requestAnimationFrame(frame);                     // draw again next screen refresh
     }
 
+    // ---- Voice ----
+    function playClip(name) {
+      player.pause();                                   // cut off the previous clip
+      if (!name || !soundOn) return;
+      player.src = "/face/sounds/" + name + ".mp3";
+      player.play().catch(() => {
+        // The phone refused (sound permission lost): ask for a tap again,
+        // and the laptop takes over the voice within 2 s.
+        soundOn = false;
+        soundHint.style.display = "block";
+      });
+    }
+
+    function unlockSound() {
+      // Must run inside a tap. Plays a clip muted for an instant, which is
+      // what makes the phone allow this player to make sound from now on.
+      if (soundOn) return;
+      player.muted = true;
+      player.src = "/face/sounds/thanks.mp3";
+      player.play().then(() => {
+        player.pause();
+        player.muted = false;
+        soundOn = true;
+        soundHint.style.display = "none";
+        preloadClips();
+      }).catch(() => {
+        player.muted = false;                           // try again on the next tap
+      });
+    }
+
+    async function preloadClips() {
+      // Download every clip once so later plays start without waiting.
+      try {
+        const response = await fetch("/face/sounds");
+        const data = await response.json();
+        for (const name of data.clips) {
+          fetch("/face/sounds/" + name + ".mp3").catch(() => {});
+        }
+      } catch (error) {
+        // Not important: clips then download when first played.
+      }
+    }
+
     // ---- Keep the phone screen on (only works on some phones over http) ----
     async function keepAwake() {
       try {
@@ -256,9 +328,10 @@
       if (document.visibilityState === "visible") keepAwake();  // ask again after unlocking
     });
 
-    // Tapping the screen asks for full screen (works on Android; on iPhone use
-    // "Add to Home Screen" instead).
-    canvas.addEventListener("click", () => {
+    // Tapping the screen turns sound on, and asks for full screen (works on
+    // Android; on iPhone use "Add to Home Screen" instead).
+    document.addEventListener("click", () => {
+      unlockSound();
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
       }

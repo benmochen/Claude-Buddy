@@ -1,13 +1,13 @@
 # Makes the buddy talk.
 #
 # play(name) plays the voice line buddy/sounds/<name>.mp3, in one of two places:
-#   - the toy's own speaker: sends "S:<name>" to the STM32, which plays its
-#     copy of the clip through the DAC on D7 (firmware audio.c). Used when the
-#     board is connected.
-#   - the laptop's audio output, with macOS's built-in `afplay`. Used when
-#     the board isn't connected, or with BUDDY_AUDIO=laptop.
-# speak(text) uses macOS `say` (robot voice) on the laptop, for the one line
-# that has no recorded clip ("Nothing to undo.").
+#   - the phone in the toy (PhoneAudio): the face page on the phone sees the
+#     order in /face/state and plays the clip. Used while a face page with
+#     sound turned on is polling (the user tapped its screen once).
+#   - the laptop's audio output, with macOS's built-in `afplay`. Used when no
+#     phone is connected, or always with BUDDY_AUDIO=laptop.
+# (The STM32 speaker on D7 is no longer used; the phone replaced it.)
+# speak(text) uses macOS `say` (robot voice) on the laptop. Not used anymore.
 
 import logging
 import shutil
@@ -26,7 +26,7 @@ SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"
 
 def _clip_lengths() -> Dict[str, float]:
     # How long each clip is, in seconds, measured once at startup with
-    # macOS's `afinfo`. The board doesn't say when a clip ends, so this is
+    # macOS's `afinfo`. The phone doesn't say when a clip ends, so this is
     # how is_busy() knows the toy is still talking.
     lengths: Dict[str, float] = {}
     afinfo = shutil.which("afinfo")
@@ -42,22 +42,22 @@ def _clip_lengths() -> Dict[str, float]:
 
 
 class Speaker:
-    def __init__(self, quiet: bool, board=None) -> None:
+    def __init__(self, quiet: bool, phone=None) -> None:
         # quiet=True prints "[PLAY] ..." instead of making sound. Use it while
         # you're working on the code so the buddy doesn't yell at your team.
         self._quiet = quiet
 
-        # board: the SerialOutput (anything with is_connected() and
-        # send_line(text)), or None to always play on the laptop.
-        self._board = board
+        # phone: the PhoneAudio (anything with is_connected(), play(name) and
+        # stop()), or None to always play on the laptop.
+        self._phone = phone
 
         # Laptop playback: the afplay/say process running, if any.
         self._current: Optional[subprocess.Popen] = None
-        # Name of the clip playing (laptop or board), None for `say`.
+        # Name of the clip playing (laptop or phone), None for `say`.
         self._current_name: Optional[str] = None
-        # Board playback: when the clip on the board will have finished
+        # Phone playback: when the clip on the phone will have finished
         # (time.monotonic() seconds), or 0 if nothing is playing there.
-        self._board_until = 0.0
+        self._phone_until = 0.0
 
         self._lengths = _clip_lengths()
 
@@ -87,11 +87,12 @@ class Speaker:
             print(f"[PLAY] {name}.mp3", flush=True)
             return
 
-        if self._board is not None and self._board.is_connected():
-            # The toy plays its own copy (built into the firmware).
-            self._board.send_line(f"S:{name}")
+        if self._phone is not None and self._phone.is_connected():
+            # The phone in the toy plays it (it picks the order up within 0.3 s).
+            self._phone.play(name)
             # 3 s if the length is unknown, so is_busy() still waits a bit.
-            self._board_until = time.monotonic() + self._lengths.get(name, 3.0)
+            # +0.5 s for the phone's polling delay.
+            self._phone_until = time.monotonic() + self._lengths.get(name, 3.0) + 0.5
             self._current_name = name
             return
 
@@ -116,11 +117,11 @@ class Speaker:
         self._current_name = None
 
     def is_busy(self) -> bool:
-        # True while a sound is still playing, on the laptop or on the board.
+        # True while a sound is still playing, on the laptop or on the phone.
         # poll() returns None while the laptop process is still running.
         laptop_busy = self._current is not None and self._current.poll() is None
-        board_busy = time.monotonic() < self._board_until
-        return laptop_busy or board_busy
+        phone_busy = time.monotonic() < self._phone_until
+        return laptop_busy or phone_busy
 
     def current_sound(self) -> Optional[str]:
         # Name of the clip playing right now, or None if silent.
@@ -132,8 +133,8 @@ class Speaker:
         # Cut the sound off mid-sentence, wherever it plays.
         if self._current is not None and self._current.poll() is None:
             self._current.terminate()
-        if time.monotonic() < self._board_until and self._board is not None:
-            self._board.send_line("S:STOP")
+        if time.monotonic() < self._phone_until and self._phone is not None:
+            self._phone.stop()
         self._current = None
         self._current_name = None
-        self._board_until = 0.0
+        self._phone_until = 0.0
