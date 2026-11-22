@@ -78,7 +78,8 @@ button presses.
   - `buddy/detectors/attention_detector.py`: webcam + MediaPipe Face Landmarker in a
     background thread (15 fps). Not looking = head down > 10 deg vs calibrated working
     position, head turned > 30 deg, eyeLookDown or eyeBlink 0.35 above baseline, or no
-    face. is_distracted() = not looking for 2 s (0.5 s gaps ignored). Calibrates during
+    face, or several signs at once: each sign as a fraction of its limit, added up, > 1.5
+    (COMBINED_LIMIT; Ben Nov 22: screen ~0.1, phone ~2.9 with every single sign under its limit). is_distracted() = not looking for 2 s (0.5 s gaps ignored). Calibrates during
     the first 3 s with a face. Model auto-downloads to laptop/models/ (gitignored).
   - `buddy/detectors/always_distracted.py`: stub, always True (BUDDY_NO_CAMERA=1)
   - `camera_test.py`: run the detector alone with a video window and live numbers

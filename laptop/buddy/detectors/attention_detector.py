@@ -46,6 +46,13 @@ YAW_LIMIT_DEGREES = 30.0
 # Ben's test: looking down at the phone often gave eyeLookDown near 0,
 # because MediaPipe sees the lowered eyelids as "closing" (eyeBlink).
 EYES_EXTRA_LIMIT = 0.35
+# Several signs at once. Each sign is turned into "how much of its limit"
+# (7.5 of 10 degrees down = 0.75) and the four are added up. Over this =
+# not looking, even if no single sign reached its limit.
+# Ben's test (Nov 22): looking at the screen added up to ~0.1; looking down
+# at the phone gave down 7.6/10, turn 19.5/30, eyes 0.23/0.35, lids 0.30/0.35
+# = ~2.9, with every single sign UNDER its limit.
+COMBINED_LIMIT = 1.5
 
 # How long to measure your working position at startup. Look at the screen
 # normally during this time.
@@ -100,6 +107,16 @@ def _head_angles(matrix) -> tuple:
     # clamp to [-1, 1] so tiny rounding errors can't crash asin
     yaw = math.degrees(math.asin(max(-1.0, min(1.0, -r20))))
     return pitch, yaw
+
+
+def _combined_score(head_down: float, yaw_off: float, eyes_extra: float, lids_extra: float) -> float:
+    # Adds up how much of its own limit each sign reached. Only "away"
+    # directions count: head up or eyes opening wider than usual add nothing.
+    total = max(0.0, head_down) / HEAD_DOWN_LIMIT_DEGREES
+    total += yaw_off / YAW_LIMIT_DEGREES
+    total += max(0.0, eyes_extra) / EYES_EXTRA_LIMIT
+    total += max(0.0, lids_extra) / EYES_EXTRA_LIMIT
+    return total
 
 
 def _average_score(blendshapes, left_name: str, right_name: str) -> float:
@@ -257,10 +274,12 @@ class AttentionDetector:
         turn = abs(_angle_difference(reading.yaw, self._base_yaw))
         eyes = reading.eyes_down - self._base_eyes
         lids = reading.eyelids - self._base_lids
+        total = _combined_score(down, turn, eyes, lids)
         return (f"down {down:+5.1f}/{HEAD_DOWN_LIMIT_DEGREES:.0f}  "
                 f"turn {turn:4.1f}/{YAW_LIMIT_DEGREES:.0f}  "
                 f"eyes {eyes:+.2f}/{EYES_EXTRA_LIMIT}  "
-                f"lids {lids:+.2f}/{EYES_EXTRA_LIMIT}")
+                f"lids {lids:+.2f}/{EYES_EXTRA_LIMIT}  "
+                f"all {total:.1f}/{COMBINED_LIMIT}")
 
     # ---- Background thread ----
 
@@ -341,6 +360,8 @@ class AttentionDetector:
             reason = "eyes down"
         elif lids_extra > EYES_EXTRA_LIMIT:
             reason = "eyelids down"
+        elif _combined_score(head_down, yaw_off, eyes_extra, lids_extra) > COMBINED_LIMIT:
+            reason = "several signs"
         else:
             reason = "ok"
         return Reading(True, pitch, yaw, eyes_down, eyelids, looking=(reason == "ok"), reason=reason)
