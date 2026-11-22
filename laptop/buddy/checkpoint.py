@@ -13,6 +13,7 @@
 # Copies live in memory only (never logged, never written anywhere else),
 # because files can contain secrets.
 
+import difflib
 import logging
 from pathlib import Path
 from typing import Dict, Optional
@@ -50,6 +51,32 @@ class TurnCheckpoint:
     def file_count(self) -> int:
         # How many files Claude changed this turn (that undo() would restore).
         return len(self._originals)
+
+    def lines_added(self) -> int:
+        # How many lines Claude wrote this turn, over all the files it edited:
+        # lines in the file now that weren't in the copy from before the turn
+        # (new or changed lines; deleted lines don't count). Used so the buddy
+        # only brags "I wrote 400 lines for you" when it really wrote a lot.
+        total = 0
+        for path, original in self._originals.items():
+            try:
+                if not path.is_file():
+                    continue                      # Claude deleted it again
+                # errors="replace": a binary file gives junk lines, not a crash.
+                new_lines = path.read_bytes().decode(errors="replace").splitlines()
+            except OSError:
+                continue
+            if original is None:
+                old_lines = []                    # Claude created this file
+            else:
+                old_lines = original.decode(errors="replace").splitlines()
+            # SequenceMatcher finds the matching parts of the two versions;
+            # "insert" and "replace" blocks are the lines Claude wrote.
+            matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "insert" or tag == "replace":
+                    total += j2 - j1
+        return total
 
     def undo(self) -> int:
         # Puts every saved file back. Returns how many files were restored.

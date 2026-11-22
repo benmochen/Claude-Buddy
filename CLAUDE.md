@@ -127,8 +127,11 @@ button presses.
   playing. After DONE, when distracted: ANNOYED `done` group (0 s), `annoyed` (8 s), another
   `annoyed` (16 s), YELLING `yelling` (24 s), then a `yelling` line every 12 s, max 3, then one
   `gave_up` line and quiet. After NEEDS_YOU: `needs_you` (0 s), `yelling` (8 s), same repeats.
-  Looking back while nagging -> `thanks`, return to DONE / NEEDS_YOU. Looking away again restarts
-  from the first step. Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS; lines: SOUND_GROUPS.
+  Looking back while nagging -> lets the current line finish (never cut off), then `thanks`
+  ("Thank you." / "There you are.") or, if it already yelled, `thanks_finally` ("Finally, thank you."), return to DONE / NEEDS_YOU. Looking away again restarts
+  from the first step. Steps: ESCALATION_STEPS / NEEDS_YOU_STEPS; lines: SOUND_GROUPS (comments give each clip's
+  actual words). `annoyed2` ("I wrote 400 lines for you") only plays when Claude wrote at least
+  BIG_TURN_LINES (100) lines that turn (TurnCheckpoint.lines_added(), Edit/Write tools only).
 - Other voice moments: Notification (permission) -> `needs_you` right away; slap while WORKING ->
   `busy`; slap with nothing to undo -> `nothing_to_undo`; slap undo -> `undo`; redo button ->
   `slam`, tmux failure -> `redo_failed`.

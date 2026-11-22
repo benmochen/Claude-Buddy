@@ -29,30 +29,68 @@ class EscalationStep:
 # it picks from at random, never the same one twice in a row. A name whose
 # .mp3 doesn't exist yet is skipped, so recording it later is enough: no
 # code change. For the board, also rerun firmware/tools/make_audio_clips.py.
+# What each recorded clip actually says (transcribed Nov 21); names without
+# a clip yet show the planned text.
 SOUND_GROUPS: Dict[str, List[str]] = {
     # Claude just finished.
-    "yay": ["yay", "yay_2", "yay_3"],               # "Done. And honestly? It's pretty good."
+    "yay": [
+        "yay",           # "Okay, I'm done. Come look."
+        "yay_2",         # (not recorded) "Finished. Come look."
+        "yay_3",         # "All done! You can look now!"
+    ],
     # Claude needs permission (played right away, and again when nagging).
-    "needs_you": ["needs_you_1", "needs_you_2", "needs_you_3"],  # "Quick question. Can I do this?"
+    "needs_you": [
+        "needs_you_1",   # "I need your permission for something."
+        "needs_you_2",   # "Quick question, can I do this?"
+        "needs_you_3",   # "I'm stuck until you say yes!"
+    ],
     # First nag after you looked away from a finished answer.
-    "done": ["done"],                               # "I finished. You're welcome, I guess."
+    "done": ["done"],    # "I finished. You're welcome, I guess."
     # Next nags: disappointed.
-    "annoyed": ["annoyed", "annoyed2", "annoyed_3", "annoyed_4"],  # "Is that phone more interesting than me?"
+    "annoyed": [
+        "annoyed",       # "You're on your phone. That's fine. I'll just wait here."
+        "annoyed2",      # "I wrote 400 lines for you, you didn't even look." (big turns only)
+        "annoyed_3",     # (not recorded) "I'll just wait. Again."
+        "annoyed_4",     # "Is that phone more interesting than me?"
+    ],
     # Last nags: fed up.
-    "yelling": ["yelling", "yelling2", "yelling_3", "yelling_4"],  # "Phone. Down. Now."
+    "yelling": [
+        "yelling",       # "Okay, seriously? Put the phone down. Please."
+        "yelling2",      # "Hello? I'm right here! Look at the screen!"
+        "yelling_3",     # (not recorded) "Phone. Down. Now."
+        "yelling_4",     # "I can see you, you know."
+    ],
     # After the last repeat, before going quiet.
-    "gave_up": ["gave_up"],                         # "Fine. I'll just wait here."
-    # You looked back while it was nagging.
-    "thanks": ["thanks", "thanks_2", "thanks_3"],   # "There you are."
-    # The redo button.
-    "slam": ["slam", "slam_2", "slam_3"],           # "Rude. Redoing it."
-    "redo_failed": ["redo_failed"],                 # "I can't reach Claude. Check the terminal."
+    "gave_up": ["gave_up"],  # "Fine, I'll just wait here."
+    # You looked back during the early, disappointed nags.
+    "thanks": [
+        "thanks",        # "Thank you."
+        "thanks_2",      # "There you are."
+    ],
+    # You looked back after it had already yelled: no cheerful "There you are."
+    "thanks_finally": ["thanks_3"],  # "Finally, thank you."
+    # The redo button (no longer on the toy).
+    "slam": [
+        "slam",          # "Ow! Okay, I'll do it again, like always."
+        "slam_2",        # "Fine. I'll try again."
+        "slam_3",        # "Rude! Redoing it."
+    ],
+    "redo_failed": ["redo_failed"],  # (not recorded) "I can't reach Claude. Check the terminal."
     # A head slap that undid Claude's last turn.
-    "undo": ["undo", "undo_2"],                     # "Undone. Like it never happened."
-    "nothing_to_undo": ["nothing_to_undo"],         # "Nothing to undo. I didn't touch anything."
+    "undo": [
+        "undo",          # "Fine. I undid it."
+        "undo_2",        # (not recorded) "Undone. Like it never happened."
+    ],
+    "nothing_to_undo": ["nothing_to_undo"],  # "Nothing to undo. I didn't touch anything."
     # A head slap while Claude is still working.
-    "busy": ["busy_1", "busy_2"],                   # "I'm still working. Hold on."
+    "busy": ["busy_1", "busy_2"],  # (not recorded) "I'm still working. Hold on."
 }
+
+# "I wrote 400 lines for you" sounds silly after a 3-line answer. Lines listed
+# here only play when Claude wrote at least BIG_TURN_LINES lines in its turn
+# (counted from the files it edited, see TurnCheckpoint.lines_added()).
+BIG_TURN_LINES = 100
+ONLY_AFTER_BIG_TURN = ("annoyed2",)
 
 
 # Tune these numbers for the demo. Shorter = funnier on stage.
@@ -158,6 +196,8 @@ class BuddyService:
         self._waiting_for: Optional[BuddyState] = None
         # The line each sound group played last, so _say() doesn't repeat it.
         self._last_line: Dict[str, str] = {}
+        # Lines Claude wrote in its latest turn (set when it finishes).
+        self._lines_added = 0
 
     # ---- Called by the hook routes ----
 
@@ -178,6 +218,9 @@ class BuddyService:
 
     def on_claude_finished(self, last_assistant_message: Optional[str]) -> None:
         self._last_assistant_message = last_assistant_message
+        # How much Claude wrote decides whether "I wrote 400 lines" may play.
+        self._lines_added = self._checkpoint.lines_added()
+        logger.info("Claude wrote %d lines this turn", self._lines_added)
         text = self._messages.get(BuddyState.DONE)
         self._set_state(BuddyState.DONE, text, "hook")
         self._say("yay")
@@ -337,6 +380,7 @@ class BuddyService:
             next_step = 0          # index of the next ESCALATION_STEPS entry
             repeats_done = 0       # repeats of the last step so far
             gave_up = False        # True once the gave_up line has played
+            yelled = False         # True once a yelling line played this stretch
 
             while True:
                 await asyncio.sleep(WATCH_EVERY_SECONDS)
@@ -345,9 +389,18 @@ class BuddyService:
                 if not self._detector.is_distracted():
                     # Looking at the screen. If we were nagging, calm down.
                     if self._nagging:
+                        # Let the line that's playing finish first: cutting
+                        # off a yell mid-word sounded wrong. Checked again in
+                        # 0.25 s; if you look away meanwhile, nagging goes on.
+                        if self._speaker.is_busy():
+                            continue
                         logger.info("Looking at the screen again, calming down")
-                        # play() cuts off the nag line, then says "Thank you."
-                        self._say("thanks")
+                        # After yelling, a fed-up "Finally, thank you."; after
+                        # the early nags, a lighter "Thank you." / "There you are."
+                        if yelled:
+                            self._say("thanks_finally")
+                        else:
+                            self._say("thanks")
                         self._set_state(waiting_state, self._messages.get(waiting_state), "nag")
                         self._nagging = False
                     continue
@@ -366,6 +419,7 @@ class BuddyService:
                     next_step = 0
                     repeats_done = 0
                     gave_up = False
+                    yelled = False
 
                 if next_step < len(steps):
                     # Still working through the steps.
@@ -374,6 +428,8 @@ class BuddyService:
                         self._nag(step)
                         last_nag_at = now
                         next_step += 1
+                        if step.state == BuddyState.YELLING:
+                            yelled = True
                 elif repeats_done < MAX_REPEATS:
                     # All steps done: every REPEAT_EVERY_SECONDS, show the last
                     # step's mood again with a random yelling line.
@@ -382,6 +438,7 @@ class BuddyService:
                         self._nag(EscalationStep(0, last_step.state, last_step.lcd_text, "yelling"))
                         last_nag_at = now
                         repeats_done += 1
+                        yelled = True
                 elif not gave_up:
                     # All repeats done: one resigned line, then quiet until you
                     # look back (which calms down and resets) or send a prompt
@@ -411,8 +468,11 @@ class BuddyService:
         # .mp3 doesn't exist and the line this group played last time.
         candidates = []
         for name in SOUND_GROUPS[group]:
-            if self._speaker.has_sound(name):
-                candidates.append(name)
+            if not self._speaker.has_sound(name):
+                continue
+            if name in ONLY_AFTER_BIG_TURN and self._lines_added < BIG_TURN_LINES:
+                continue                          # e.g. no "400 lines" after a tiny answer
+            candidates.append(name)
         if not candidates:
             logger.info("No voice line recorded for %r yet, staying quiet", group)
             return
