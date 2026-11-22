@@ -167,8 +167,8 @@ SIDE_EYE_AFTER_SECONDS = 1.0
 # Short on purpose (exception to the long graces): it's a reaction to you
 # coming back, and at 1.5 s it came 3-4 s late and sounded random. Total
 # delay = ~0.5 s (camera sees you look back) + this + up to 0.25 s (next
-# check) + up to ~0.3 s (phone picks it up) = about 2 s (Ben's choice).
-VOICE_THANKS_GRACE_SECONDS = 1.0
+# check) + up to ~0.3 s (phone picks it up) = about 1 s (Ben's choice).
+VOICE_THANKS_GRACE_SECONDS = 0.25
 
 # How often the watch loop asks the camera "distracted?" while waiting.
 # The camera itself checks 15 times per second; 4 per second here is

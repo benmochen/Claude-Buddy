@@ -195,8 +195,8 @@ button presses.
   - at least 6 s of silence after any line ends before the next nag line (VOICE_GAP_SECONDS):
     steps are 8 s start to start and clips 3-5 s, so "I finished..." and the first disappointed
     line came 1-2 s apart at the start of every nagging stretch.
-  - "thank you": only after 1.0 s locked in without a break (looking now AND work app in front;
-    short on purpose, ~2 s after looking back in total; 1.5 s felt late and random),
+  - "thank you": only after 0.25 s locked in without a break (looking now AND work app in front;
+    short on purpose, ~1 s after looking back in total; 1.5 s felt late and random),
     never over a playing line; dropped if the nagging restarts first (_pending_thanks).
   - Side effect: glancing back and forth (never 7 s away) lets the mood climb to YELLING silently,
     so the first spoken line can be a yell.
